@@ -98,10 +98,18 @@ def store_weather_data(request: Request):
 
                 local_time_dt = utc_time_dt.astimezone(LONDON_TZ)
 
+                # Store the London-adjusted timestamp
+                weather_data["timestamp_london"] = local_time_dt #.isoformat() - as a Firestore Timestamp object
+
                 weather_data["day"] = local_time_dt.strftime("%j")      # Day of year (e.g., "001")
                 weather_data["week"] = local_time_dt.strftime("%W")     # Week # (Mon first, e.g., "00")
                 weather_data["month"] = local_time_dt.strftime("%m")    # Month # (e.g., "01")
                 weather_data["year"] = local_time_dt.strftime("%Y")     # Year (e.g., "2024")
+
+                # Derive doc_id from the London-adjusted timestamp
+                doc_id_timestamp_part = local_time_dt.strftime("%Y-%m-%dT%H-%M-%S") # Format for doc ID
+                doc_id = f"reading_{doc_id_timestamp_part}"
+
             except ValueError as e:
                 logging.warning(f"Could not parse client timestamp '{client_utc_timestamp_str}' to derive date parts. Error: {e}. These fields might be missing.")
             except Exception as e:
@@ -109,8 +117,7 @@ def store_weather_data(request: Request):
         elif not client_utc_timestamp_str:
             logging.warning("Client 'timestamp' field is missing. Cannot derive custom date parts from it.")
         elif not LONDON_TZ: # Should not happen if tz.gettz is correct
-             logging.error("LONDON_TZ is not defined. Cannot derive custom date parts.")
-
+            logging.error("LONDON_TZ is not defined. Cannot derive custom date parts.")
 
         # 6. Validate and convert numeric fields (optional, but good practice)
         numeric_fields = ['temperature', 'humidity', 'pressure', 'rain', 
@@ -129,9 +136,10 @@ def store_weather_data(request: Request):
         doc_id_timestamp_part = weather_data['timestamp'].replace(':', '-').replace('.', '-').replace('Z','')
         doc_id = f"reading_{doc_id_timestamp_part}"
         
+        # doc_id is now derived from the London-time adjusted timestamp
         collection_ref = db.collection('weather-readings')
-        doc_ref = collection_ref.document(doc_id)
-        doc_ref.set(weather_data) # weather_data now includes the derived day, week, month, year
+        doc_ref = collection_ref.document(doc_id) # Use the new doc_id
+        doc_ref.set(weather_data) # weather_data now includes 'timestamp_london' 
         
         logging.info(f"Successfully stored weather data with ID: {doc_id} and data: {weather_data}")
         
