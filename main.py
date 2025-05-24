@@ -1,10 +1,8 @@
-# main.py for Google Cloud Function (store-weather-data and optionally get-recent-weather)
-
 import json
 import logging
 from datetime import datetime
-from dateutil import tz  # For timezone conversions
-from flask import Request # Assuming you're using Flask, or use functions_framework.Request for 2nd Gen
+from dateutil import tz  
+from flask import Request 
 from google.cloud import firestore
 from google.cloud.exceptions import GoogleCloudError
 
@@ -12,6 +10,7 @@ from google.cloud.exceptions import GoogleCloudError
 # Initialize Firestore client globally to be reused across invocations
 # Ensure this matches the Database ID you created in Firestore.
 FIRESTORE_DATABASE_ID = "weatherdata"
+
 try:
     db = firestore.Client(database=FIRESTORE_DATABASE_ID)
 except Exception as e:
