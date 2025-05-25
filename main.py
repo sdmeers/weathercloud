@@ -16,10 +16,9 @@ try:
 except Exception as e:
     logging.critical(f"Failed to initialize Firestore client with database '{FIRESTORE_DATABASE_ID}': {e}")
     # If the client fails to initialize, the function won't work.
-    # Depending on GCP environment, this might cause deployment to fail or invocations to error out immediately.
     db = None
 
-# Define the target timezone for deriving day, week, month, year
+# Define the target timezone for London, which correctly handles DST
 LONDON_TZ = tz.gettz('Europe/London')
 
 # --- Entry Point: store_weather_data ---
@@ -89,14 +88,24 @@ def store_weather_data(request: Request):
 
         if client_utc_timestamp_str and LONDON_TZ:
             try:
+                # Parse the incoming UTC string into a timezone-aware UTC datetime object
                 utc_time_dt = datetime.strptime(client_utc_timestamp_str, "%Y-%m-%dT%H:%M:%SZ")
-                utc_time_dt = utc_time_dt.replace(tzinfo=tz.tzutc()) # Ensure it's UTC aware
+                utc_time_dt = utc_time_dt.replace(tzinfo=tz.tzutc()) 
 
+                # Convert the UTC datetime object to the local London timezone
                 local_time_dt = utc_time_dt.astimezone(LONDON_TZ)
 
-                # Add timestamp_UTC and timestamp_local as Firestore Timestamp objects
-                weather_data["timestamp_UTC"] = utc_time_dt
-                weather_data["timestamp_local"] = local_time_dt
+                # --- Logging to confirm the conversion ---
+                logging.info(f"Original UTC string: {client_utc_timestamp_str}")
+                logging.info(f"Parsed UTC datetime object: {utc_time_dt} (tzinfo: {utc_time_dt.tzinfo})")
+                logging.info(f"Local London datetime object: {local_time_dt} (tzinfo: {local_time_dt.tzinfo})")
+                # ----------------------------------------
+
+                # Store UTC as a native Firestore Timestamp (primary time field)
+                weather_data["timestamp_UTC"] = utc_time_dt 
+                
+                # Store local time as an ISO string for clear visual distinction and explicit offset
+                weather_data["timestamp_local_iso_str"] = local_time_dt.isoformat()
 
                 # Derive doc_id from the London-adjusted timestamp (local time)
                 doc_id_timestamp_part = local_time_dt.strftime("%Y-%m-%dT%H-%M-%S")
@@ -139,8 +148,8 @@ def store_weather_data(request: Request):
             'status': 'success',
             'message': 'Weather data stored successfully',
             'document_id': doc_id,
-            'timestamp_local': weather_data['timestamp_local'].isoformat(), # Return for confirmation
-            'timestamp_UTC': weather_data['timestamp_UTC'].isoformat() # Return for confirmation
+            'timestamp_local_display': weather_data['timestamp_local_iso_str'],
+            'timestamp_UTC_display': weather_data['timestamp_UTC'].isoformat()
         }, 200, headers)
         
     except GoogleCloudError as e:
