@@ -7,6 +7,7 @@ from google.cloud import firestore
 from google.cloud.exceptions import GoogleCloudError
 from typing import Optional, Tuple, Dict, Any
 import calendar # For monthrange
+import inspect
 
 # --- Configuration ---
 # Initialize Firestore client globally to be reused across invocations
@@ -187,6 +188,29 @@ def get_weather_data(request: Request):
     if db is None:
         logging.error("Firestore client is not initialized. Cannot process request.")
         return (jsonify({'error': 'Internal server configuration error: Firestore client unavailable'}), 500, headers)
+
+    logging.info("--- Firestore module inspection ---")
+    try:
+        # Re-importing to ensure we inspect the one being used
+        import google.cloud.firestore as _debug_firestore_module
+        logging.info(f"Loaded firestore module name: {_debug_firestore_module.__name__}")
+        logging.info(f"Loaded firestore module path: {_debug_firestore_module.__file__}")
+
+        if hasattr(_debug_firestore_module, 'VERSION'):
+            logging.info(f"google-cloud-firestore version: {_debug_firestore_module.VERSION}")
+        else:
+            logging.info("google-cloud-firestore.VERSION attribute not found.")
+
+        if hasattr(_debug_firestore_module, 'Timestamp'):
+            logging.info("firestore.Timestamp attribute IS present.")
+        else:
+            logging.error("firestore.Timestamp attribute IS NOT present. This is the source of the error.")
+            # Log all attributes to see what's actually there
+            logging.info(f"Available attributes in firestore module: {dir(_debug_firestore_module)}")
+
+    except Exception as e:
+        logging.error(f"Error during firestore module inspection: {e}")
+    logging.info("--- End Firestore module inspection ---")
 
     try:
         request_json = request.get_json(silent=True)
