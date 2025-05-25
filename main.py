@@ -1,8 +1,8 @@
 import json
 import logging
 from datetime import datetime
-from dateutil import tz  
-from flask import Request 
+from dateutil import tz
+from flask import Request
 from google.cloud import firestore
 from google.cloud.exceptions import GoogleCloudError
 
@@ -17,7 +17,7 @@ except Exception as e:
     logging.critical(f"Failed to initialize Firestore client with database '{FIRESTORE_DATABASE_ID}': {e}")
     # If the client fails to initialize, the function won't work.
     # Depending on GCP environment, this might cause deployment to fail or invocations to error out immediately.
-    db = None 
+    db = None
 
 # Define the target timezone for deriving day, week, month, year
 LONDON_TZ = tz.gettz('Europe/London')
@@ -26,7 +26,6 @@ LONDON_TZ = tz.gettz('Europe/London')
 def store_weather_data(request: Request):
     """
     Cloud Function to receive and store weather data from Raspberry Pi Pico.
-    It adds London-time based 'day', 'week', 'month', 'year' fields.
     
     Expected JSON format from client:
     {
@@ -38,10 +37,10 @@ def store_weather_data(request: Request):
         "luminance": 5000,
         "wind_speed": 5.2,
         "wind_direction": 180.0,
-        "timestamp": "2024-01-01T12:00:00Z" // UTC timestamp from Pico
+        "timestamp": "YYYY-MM-DDTHH:MM:SSZ" // UTC timestamp from Pico
     }
     """
-    
+
     # Handle CORS preflight requests
     if request.method == 'OPTIONS':
         headers = {
@@ -76,19 +75,16 @@ def store_weather_data(request: Request):
             logging.warning("No JSON data provided in request.")
             return ({'error': 'No data provided'}, 400, headers)
         
-        # 3. Validate required fields (adjust based on your actual sensor setup)
-        # These are fields expected directly from the Pico/client
-        required_client_fields = ['temperature', 'humidity', 'pressure', 'timestamp'] 
+        # 3. Validate required fields
+        required_client_fields = ['temperature', 'humidity', 'pressure', 'rain', 'rain_rate', 
+                                  'luminance', 'wind_speed', 'wind_direction', 'timestamp']
         missing_fields = [field for field in required_client_fields if field not in weather_data]
         
         if missing_fields:
             logging.warning(f"Missing required fields: {', '.join(missing_fields)}")
             return ({'error': f'Missing required fields: {", ".join(missing_fields)}'}, 400, headers)
-            
-        # 4. Add server processing timestamp (Firestore specific timestamp)
-        weather_data['processed_at'] = firestore.SERVER_TIMESTAMP
-        
-        # 5. Derive London-time based day, week, month, year from client's UTC timestamp
+                
+        # 4. Process timestamps and create document ID
         client_utc_timestamp_str = weather_data.get('timestamp')
 
         if client_utc_timestamp_str and LONDON_TZ:
@@ -98,29 +94,26 @@ def store_weather_data(request: Request):
 
                 local_time_dt = utc_time_dt.astimezone(LONDON_TZ)
 
-                # Store the London-adjusted timestamp
-                weather_data["timestamp_london"] = local_time_dt #.isoformat() - as a Firestore Timestamp object
+                # Add timestamp_UTC and timestamp_local as Firestore Timestamp objects
+                weather_data["timestamp_UTC"] = utc_time_dt
+                weather_data["timestamp_local"] = local_time_dt
 
-                weather_data["day"] = local_time_dt.strftime("%j")      # Day of year (e.g., "001")
-                weather_data["week"] = local_time_dt.strftime("%W")     # Week # (Mon first, e.g., "00")
-                weather_data["month"] = local_time_dt.strftime("%m")    # Month # (e.g., "01")
-                weather_data["year"] = local_time_dt.strftime("%Y")     # Year (e.g., "2024")
-
-                # Derive doc_id from the London-adjusted timestamp
-                doc_id_timestamp_part = local_time_dt.strftime("%Y-%m-%dT%H-%M-%S") # Format for doc ID
+                # Derive doc_id from the London-adjusted timestamp (local time)
+                doc_id_timestamp_part = local_time_dt.strftime("%Y-%m-%dT%H-%M-%S")
                 doc_id = f"reading_{doc_id_timestamp_part}"
 
             except ValueError as e:
-                logging.warning(f"Could not parse client timestamp '{client_utc_timestamp_str}' to derive date parts. Error: {e}. These fields might be missing.")
+                logging.warning(f"Could not parse client timestamp '{client_utc_timestamp_str}'. Error: {e}")
+                return ({'error': f'Invalid timestamp format: {client_utc_timestamp_str}'}, 400, headers)
             except Exception as e:
-                logging.error(f"Unexpected error deriving date parts from client timestamp '{client_utc_timestamp_str}': {e}")
-        elif not client_utc_timestamp_str:
-            logging.warning("Client 'timestamp' field is missing. Cannot derive custom date parts from it.")
-        elif not LONDON_TZ: # Should not happen if tz.gettz is correct
-            logging.error("LONDON_TZ is not defined. Cannot derive custom date parts.")
+                logging.error(f"Unexpected error processing timestamp '{client_utc_timestamp_str}': {e}")
+                return ({'error': 'Internal server error during timestamp processing'}, 500, headers)
+        else:
+            logging.warning("Client 'timestamp' field is missing or LONDON_TZ is not defined.")
+            return ({'error': 'Timestamp is required'}, 400, headers)
 
-        # 6. Validate and convert numeric fields (optional, but good practice)
-        numeric_fields = ['temperature', 'humidity', 'pressure', 'rain', 
+        # 5. Validate and convert numeric fields
+        numeric_fields = ['temperature', 'humidity', 'pressure', 'rain',
                           'rain_rate', 'luminance', 'wind_speed', 'wind_direction']
         for field in numeric_fields:
             if field in weather_data:
@@ -130,16 +123,15 @@ def store_weather_data(request: Request):
                     logging.warning(f"Field '{field}' with value '{weather_data[field]}' is not a valid number.")
                     return ({'error': f'Field {field} must be a number. Received: {weather_data[field]}'}, 400, headers)
         
+        # 6. Remove the original 'timestamp' field from the document as it's now split
+        # We assume the original 'timestamp' is only for parsing and not needed in the final doc
+        if 'timestamp' in weather_data:
+            del weather_data['timestamp']
+
         # 7. Store in Firestore
-        # Create a document ID from the original timestamp to help ensure uniqueness if desired
-        # and make it somewhat human-readable/sortable if Browse raw IDs.
-        doc_id_timestamp_part = weather_data['timestamp'].replace(':', '-').replace('.', '-').replace('Z','')
-        doc_id = f"reading_{doc_id_timestamp_part}"
-        
-        # doc_id is now derived from the London-time adjusted timestamp
         collection_ref = db.collection('weather-readings')
-        doc_ref = collection_ref.document(doc_id) # Use the new doc_id
-        doc_ref.set(weather_data) # weather_data now includes 'timestamp_london' 
+        doc_ref = collection_ref.document(doc_id)
+        doc_ref.set(weather_data)
         
         logging.info(f"Successfully stored weather data with ID: {doc_id} and data: {weather_data}")
         
@@ -147,73 +139,13 @@ def store_weather_data(request: Request):
             'status': 'success',
             'message': 'Weather data stored successfully',
             'document_id': doc_id,
-            'timestamp': weather_data['timestamp'] # Return the original timestamp
+            'timestamp_local': weather_data['timestamp_local'].isoformat(), # Return for confirmation
+            'timestamp_UTC': weather_data['timestamp_UTC'].isoformat() # Return for confirmation
         }, 200, headers)
         
     except GoogleCloudError as e:
         logging.error(f"Firestore error: {str(e)}")
         return ({'error': 'Database error occurred', 'details': str(e)}, 500, headers)
     except Exception as e:
-        logging.error(f"Unexpected error in store_weather_data: {str(e)}", exc_info=True) # exc_info=True for stack trace
+        logging.error(f"Unexpected error in store_weather_data: {str(e)}", exc_info=True)
         return ({'error': 'Internal server error', 'details': str(e)}, 500, headers)
-
-# --- Optional Entry Point: get_recent_weather (if deployed from same main.py) ---
-def get_recent_weather(request: Request):
-    """
-    Cloud Function to retrieve recent weather readings.
-    Query parameter: limit (default: 10, max: 100)
-    """
-    # Handle CORS preflight requests
-    if request.method == 'OPTIONS':
-        headers = {
-            'Access-Control-Allow-Origin': '*', # Adjust in production
-            'Access-Control-Allow-Methods': 'GET, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Max-Age': '3600'
-        }
-        return ('', 204, headers)
-
-    # Set CORS headers for the main request
-    headers = {'Access-Control-Allow-Origin': '*'} # Adjust in production
-
-    if db is None:
-        logging.error("Firestore client is not initialized. Cannot process get_recent_weather request.")
-        return ({'error': 'Internal server configuration error: Firestore client unavailable'}, 500, headers)
-    
-    if request.method != 'GET':
-        logging.warning(f"Invalid request method for get_recent_weather: {request.method}")
-        return ({'error': 'Only GET method allowed for get_recent_weather'}, 405, headers)
-
-    try:
-        limit_str = request.args.get('limit', '10')
-        try:
-            limit = int(limit_str)
-            limit = min(max(limit, 1), 100)  # Cap between 1 and 100 records
-        except ValueError:
-            logging.warning(f"Invalid limit parameter: {limit_str}. Using default 10.")
-            limit = 10
-            
-        collection_ref = db.collection('weather-readings')
-        # Order by the original client timestamp in descending order to get the latest
-        query = collection_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(limit)
-        
-        docs = query.stream()
-        readings = []
-        for doc in docs:
-            data = doc.to_dict()
-            data['id'] = doc.id # Optionally include the document ID
-            readings.append(data)
-            
-        return ({
-            'status': 'success',
-            'count': len(readings),
-            'limit_applied': limit,
-            'readings': readings
-        }, 200, headers)
-        
-    except GoogleCloudError as e:
-        logging.error(f"Firestore error in get_recent_weather: {str(e)}")
-        return ({'error': 'Database error occurred while retrieving data', 'details': str(e)}, 500, headers)
-    except Exception as e:
-        logging.error(f"Unexpected error in get_recent_weather: {str(e)}", exc_info=True)
-        return ({'error': 'Internal server error while retrieving data', 'details': str(e)}, 500, headers)
