@@ -1,6 +1,6 @@
-Flask>=2.0  # Or your specific version
-gunicorn>=20.0 # Or your specific version
-pandas
-matplotlib
-requests
-calplot
+functions-framework>=3.0.0
+Flask>=2.0
+pandas>=1.3.0
+matplotlib>=3.5.0
+requests>=2.25.0
+calplot>=0.1.0
