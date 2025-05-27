@@ -1,23 +1,81 @@
-import functions_framework
-from flask import Flask, render_template, Response
-import datetime
 import io
-import pandas as pd
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-from matplotlib.figure import Figure
-import requests
+import os
 import json
 import logging
+import datetime
+
+import pandas as pd
+import requests
+import matplotlib
+matplotlib.use('Agg')
+
+from flask import Flask, Response, render_template
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
+import matplotlib.dates as mdates
+import matplotlib.colors as mcolors
+import calplot                     # for the cal-heatmap
+import functions_framework 
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
 # Your existing helper functions (convert_wind_direction, get_weather_data_from_cloud_function, etc.)
 GET_WEATHER_DATA_CF_URL = "https://europe-west2-weathercloud-460719.cloudfunctions.net/get-weather-data"
+
+def plot_data(dates, values, title, y_label):
+    fig = Figure(figsize=(8, 4))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.plot(dates, values)
+    ax.set_title(title)
+    ax.set_ylabel(y_label)
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+    fig.autofmt_xdate()
+    return fig
+
+def plot_bar(x, heights, title, y_label):
+    fig = Figure(figsize=(8, 4))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.bar(x, heights)
+    ax.set_title(title)
+    ax.set_ylabel(y_label)
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+    fig.autofmt_xdate()
+    return fig
+
+def plot_daily_bar(hours, values, title, y_label):
+    fig = Figure(figsize=(8, 4))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.bar(hours, values)
+    ax.set_title(title)
+    ax.set_xlabel('Hour of Day')
+    ax.set_ylabel(y_label)
+    return fig
+
+def plot_24h_bar_greyed(hours, values, title, y_label):
+    fig = Figure(figsize=(8, 4))
+    ax = fig.add_subplot(1, 1, 1)
+    bars = ax.bar(hours, values)
+    # grey out future hours, for example
+    for h, bar in zip(hours, bars):
+        if h > datetime.datetime.utcnow().hour:
+            bar.set_alpha(0.3)
+    ax.set_title(title)
+    ax.set_xlabel('Hour of Day')
+    ax.set_ylabel(y_label)
+    return fig
+
+def plot_annual(df, agg_method, cmap_name):
+    # df indexed by datetime, with a 'temperature' column
+    yearly = getattr(df['temperature'].resample('M'), agg_method)()
+    fig = Figure(figsize=(10, 4))
+    ax = fig.add_subplot(1, 1, 1)
+    yearly.plot(kind='bar', ax=ax, colormap=cmap_name)
+    ax.set_title(f'Annual {agg_method.capitalize()} Temperatures by Month')
+    ax.set_ylabel('Temperature (°C)')
+    return fig
 
 def convert_wind_direction(degrees):
     if degrees is None:
@@ -307,7 +365,7 @@ def plot_annual_rain_days_png():
         fig_to_return = fig
     else:
         logging.info(f"Plotting calplot for rain_event_data with {len(rain_event_data)} days.")
-        # calplot expects a Series. `how='sum'` is okay here even for 0/1 data.
+        # calplot expects a Series. how='sum' is okay here even for 0/1 data.
         # vmin/vmax ensures the colormap is used correctly for 0 and 1.
         fig, axis_list = calplot.calplot(data=rain_event_data, how='sum', figsize=(13, 2.5), 
                                        cmap=cmap, linecolor='#ffffff', yearlabels=True, 
@@ -353,7 +411,8 @@ def plot_annual_min_temperatures_png():
 @functions_framework.http
 def display_weather_data(request):
     """Cloud Function entry point."""
-    with app.test_request_context(request.url, method=request.method, headers=request.headers, data=request.data):
+    # Create a real Flask request context from the incoming WSGI environ
+    with app.request_context(request.environ):
         try:
             return app.full_dispatch_request()
         except Exception as e:
