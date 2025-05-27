@@ -1,0 +1,6 @@
+Flask>=2.0  # Or your specific version
+gunicorn>=20.0 # Or your specific version
+pandas
+matplotlib
+requests
+calplot
