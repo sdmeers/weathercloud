@@ -3,6 +3,7 @@ import os
 import json
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -58,7 +59,7 @@ def plot_daily_bar(hours, values, title, y_label):
 def plot_24h_bar_greyed(xs, ys, title, ylabel):
     fig  = Figure(figsize=(13, 2.5))
     ax   = fig.add_subplot(1, 1, 1)
-    nowh = datetime.now().hour
+    nowh = datetime.now(ZoneInfo("Europe/London")).hour
 
     # fill in missing hours with zero
     full_xs = list(range(24))
@@ -115,15 +116,52 @@ def plot_annual(df, agg_method, cmap_name):
     ax.set_ylabel('Temperature (°C)')
     return fig
 
-def convert_wind_direction(degrees):
-    if degrees is None:
-        return "N/A"
-    directions = [
-        "N", "NNE", "NNE", "NE", "NE", "ENE", "ENE", "E", "E", "ESE", "ESE", "SE", "SE", "SSE", "SSE", "S",
-        "S", "SSW", "SSW", "SW", "SW", "WSW", "WSW", "W", "W", "WNW", "WNW", "NW", "NW", "NNW", "NNW", "N"
-    ]
-    index = int((degrees + 5.625) / 11.25) % 32
-    return directions[index]
+def convert_wind_direction(deg):
+    '''
+    Converts wind direction from degrees to cardinal compass points.
+
+    This function is specifically tailored for the Meersy Weather Station's configuration.
+    It maps certain degree values to their corresponding cardinal directions based on the station's installation.
+
+    Parameters:
+        deg (int): A single integer representing the measured wind direction in degrees (0-360).
+
+    Returns:
+        str: A string representing the converted compass cardinal point (e.g., "N", "NE", "E", etc.).
+
+    Raises:
+        ValueError: If the provided degree value does not match any predefined direction.
+
+    Usage:
+        try:
+            wind_direction_in_degrees = 225
+            cardinal_direction = convert_wind_direction(wind_direction_in_degrees)
+            print(f"Cardinal Direction: {cardinal_direction}")
+        except ValueError as e:
+            print(e)
+
+    Note:
+        The function currently handles specific degree values (0, 45, 90, 135, 180, 225, 270, 315).
+        Other values will cause a ValueError.
+    '''
+    if deg == 225:
+        return "N"
+    elif deg == 180:
+        return "NW"
+    elif deg == 135:
+        return "W"
+    elif deg == 90:
+        return "SW"
+    elif deg == 45:
+        return "S"
+    elif deg == 0:
+        return "SE"
+    elif deg == 315:
+        return "E"
+    elif deg == 270:
+        return "NE"
+    else:
+        raise ValueError("Error: Invalid wind direction")
 
 def get_weather_data_from_cloud_function(data_range: str) -> pd.DataFrame:
     """Fetch weather data from the get-weather-data Cloud Function."""
