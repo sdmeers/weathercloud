@@ -2,12 +2,13 @@ import io
 import os
 import json
 import logging
-import datetime
+from datetime import datetime
 
 import pandas as pd
 import requests
 import matplotlib
 matplotlib.use('Agg')
+from matplotlib.ticker import MultipleLocator
 
 from flask import Flask, Response, render_template
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
@@ -54,17 +55,54 @@ def plot_daily_bar(hours, values, title, y_label):
     ax.set_ylabel(y_label)
     return fig
 
-def plot_24h_bar_greyed(hours, values, title, y_label):
-    fig = Figure(figsize=(8, 4))
-    ax = fig.add_subplot(1, 1, 1)
-    bars = ax.bar(hours, values)
-    # grey out future hours, for example
-    for h, bar in zip(hours, bars):
-        if h > datetime.datetime.utcnow().hour:
-            bar.set_alpha(0.3)
+def plot_24h_bar_greyed(xs, ys, title, ylabel):
+    fig  = Figure(figsize=(13, 2.5))
+    ax   = fig.add_subplot(1, 1, 1)
+    nowh = datetime.now().hour
+
+    # fill in missing hours with zero
+    full_xs = list(range(24))
+    full_ys = [0]*24
+    for x, y in zip(xs, ys):
+        full_ys[x] = y
+
+    # rotate so “nowh − 1” is at the right edge
+    ordered_hours = sorted(full_xs, key=lambda h: (h - 1 - nowh) % 24)
+    ordered_ys    = [full_ys[h] for h in ordered_hours]
+
+    # draw bars
+    ax.bar(range(24), ordered_ys, color='black', width=0.5)
+    ax.set_xlim(-0.5, 23.5)
+
+    # label every 6 hours (using rotated positions)
+    ticks  = [23, 17, 11, 5, 0]
+    labels = [f"{ordered_hours[t]:02d}:00" for t in ticks]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(labels)
+
+    # shade “yesterday” up to midnight
+    midnight_pos = ordered_hours.index(0)
+    ax.axvspan(-0.5, midnight_pos, facecolor='lightgrey', alpha=0.5)
+
+    # minor ticks and grid
+    ax.xaxis.set_minor_locator(MultipleLocator(1))
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+
+    # y‐limits and label
+    ax.set_ylim(0, max(1, ax.get_ylim()[1]))
+    ax.set_ylabel(ylabel)
+
+    # annotate “Yesterday” / “Today”
+    ymax = ax.get_ylim()[1]
+    ax.text(0,  ymax*0.95, 'Yesterday', ha='left',  va='top')
+    ax.text(23, ymax*0.95, 'Today',     ha='right', va='top')
+
+    # title & styling
     ax.set_title(title)
-    ax.set_xlabel('Hour of Day')
-    ax.set_ylabel(y_label)
+    ax.set_facecolor('#ffffff')
+    fig.set_facecolor('#ffffff')
+    fig.subplots_adjust(left=0.045, right=0.98, top=0.9, bottom=0.2)
+
     return fig
 
 def plot_annual(df, agg_method, cmap_name):
@@ -105,7 +143,12 @@ def get_weather_data_from_cloud_function(data_range: str) -> pd.DataFrame:
         df = pd.DataFrame(json_data)
 
         if 'timestamp_UTC' in df.columns:
-            df['datetime'] = pd.to_datetime(df['timestamp_UTC'], errors='coerce')
+            # parse as UTC, convert to Europe/London, then remove tz-info if you want naïve datetimes
+            df['datetime'] = (
+                pd.to_datetime(df['timestamp_UTC'], errors='coerce', utc=True)
+                .dt.tz_convert('Europe/London')
+                .dt.tz_localize(None)
+            )
             df.dropna(subset=['datetime'], inplace=True)
             df.drop(columns=['timestamp_UTC'], inplace=True)
         else:
@@ -178,7 +221,7 @@ def home():
         try:
             latest_row = latest_data.iloc[0]
             template_vars.update({
-                "time_of_latest_reading": datetime.datetime.strftime(latest_row['datetime'], '%A at %H:%M'),
+                "time_of_latest_reading": latest_row['datetime'].strftime('%A at %H:%M'),
                 "latest_temperature": round(latest_row.get('temperature', float('nan')), 1),
                 "latest_humidity": round(latest_row.get('humidity', float('nan')), 1),
                 "latest_rain_rate": round(latest_row.get('rain_rate', float('nan')) * 3600, 1),
@@ -283,15 +326,22 @@ def plot_24h_rainfall_png():
     if last24h_data.empty or 'datetime' not in last24h_data.columns or 'rain' not in last24h_data.columns:
         return Response("No data for last 24h rainfall plot.", mimetype='text/plain', status=204)
 
+    # ensure datetime dtype
     if not pd.api.types.is_datetime64_any_dtype(last24h_data['datetime']):
         last24h_data['datetime'] = pd.to_datetime(last24h_data['datetime'], errors='coerce')
         last24h_data.dropna(subset=['datetime'], inplace=True)
         if last24h_data.empty:
-             return Response("No valid datetime data for 24h rainfall plot.", mimetype='text/plain', status=204)
+            return Response("No valid datetime data for 24h rainfall plot.", mimetype='text/plain', status=204)
 
+    # sum rain by hour
     rain_data = last24h_data.groupby(last24h_data['datetime'].dt.hour)['rain'].sum()
-    # rain_data.index will be hours (0-23) that have data
-    fig = plot_24h_bar_greyed(list(rain_data.index), list(rain_data.values), "Last 24 Hours Rainfall (by hour)", "Rainfall (mm)")
+
+    fig = plot_24h_bar_greyed(
+        list(rain_data.index),
+        list(rain_data.values),
+        "Hourly Rainfall",
+        "Rainfall (mm)"
+    )
     output = io.BytesIO()
     FigureCanvas(fig).print_png(output)
     return Response(output.getvalue(), mimetype='image/png')
