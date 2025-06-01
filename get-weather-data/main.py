@@ -8,6 +8,7 @@ from google.cloud.exceptions import GoogleCloudError
 from typing import Optional, Tuple, Dict, Any
 import calendar
 import inspect
+import time
 
 # --- Configuration ---
 FIRESTORE_DATABASE_ID = "weatherdata"
@@ -119,6 +120,9 @@ def get_time_range(arg: str, current_local_time: datetime) -> Tuple[Optional[dat
 
 # --- Cloud Function Entry Point: get_weather_data ---
 def get_weather_data(request: Request):
+    start_request_time = time.time() # Start timing for the entire request
+    logging.info(f"Function received request at {start_request_time:.2f}s")
+
     headers = {'Access-Control-Allow-Origin': '*'}
     if request.method == 'OPTIONS':
         return ('', 204, headers)
@@ -134,9 +138,14 @@ def get_weather_data(request: Request):
     # logging.info("--- End Firestore module inspection ---")
 
     try:
+        parse_json_start = time.time()
         request_json = request.get_json(silent=True)
         if not request_json:
+            logging.warning("Request has no JSON payload or it's invalid.")
             return (jsonify({'error': 'Request must be JSON'}), 400, headers)
+        logging.info(f"Received JSON payload: {request_json}") # Log the actual payload
+        parse_json_end = time.time()
+        logging.info(f"JSON parsing took: {parse_json_end - parse_json_start:.4f}s")
 
         start_utc_query = None
         end_utc_query = None
@@ -186,10 +195,14 @@ def get_weather_data(request: Request):
         if limit_query:
             query = query.limit(limit_query)
 
+        # --- START Firestore Query Timing ---
+        firestore_query_start = time.time()
         docs_stream = query.stream()
         
         results = []
+        doc_count = 0
         for doc in docs_stream:
+            doc_count += 1
             data = doc.to_dict()
             # Convert Firestore Timestamp objects (which are Python datetime) to ISO strings
             # if 'timestamp_UTC' in data and isinstance(data['timestamp_UTC'], firestore.Timestamp): # OLD LINE
@@ -197,7 +210,22 @@ def get_weather_data(request: Request):
                 data['timestamp_UTC'] = data['timestamp_UTC'].isoformat()
             results.append(data)
         
-        logging.info(f"Successfully retrieved {len(results)} documents.")
+        firestore_query_end = time.time()
+        logging.info(f"Firestore query and stream iteration took: {firestore_query_end - firestore_query_start:.4f}s")
+        logging.info(f"Successfully retrieved {doc_count} documents.")
+        # --- END Firestore Query Timing ---
+
+        # --- START JSON Serialization Timing ---
+        json_serialize_start = time.time()
+        json_response = jsonify(results) # jsonify returns a Flask Response object directly
+        json_serialize_end = time.time()
+        logging.info(f"JSON serialization took: {json_serialize_end - json_serialize_start:.4f}s")
+        # --- END JSON Serialization Timing ---
+
+        end_request_time = time.time()
+        logging.info(f"Total function execution time: {end_request_time - start_request_time:.4f}s")
+
+        #logging.info(f"Successfully retrieved {len(results)} documents.")
         return (jsonify(results), 200, headers)
 
     except ValueError as ve:
