@@ -1,9 +1,123 @@
+""" main.py — Cloud Function Help / Manual Page
+===========================================
+
+NAME
+    get_weather_data – Retrieve structured historical and real-time
+    weather-station readings from Firestore.
+
+SYNOPSIS
+    Deployed as a Google Cloud Function or Cloud Run service that accepts
+    **HTTPS POST** requests with a JSON body.  
+    CORS pre-flight (**OPTIONS**) is supported.
+
+    ENDPOINT
+        https://<REGION>-<PROJECT>.cloudfunctions.net/get_weather_data
+
+    HEADERS
+        Content-Type:  application/json
+        (No auth required by default – control with IAM / an API Gateway.)
+
+JSON REQUEST SHAPES
+    1. Time range by keyword
+        {
+          "range": "<keyword>",          # see RANGE KEYWORDS below
+          "fields": ["temperature", ...] # optional – choose columns
+        }
+
+    2. Explicit UTC window
+        {
+          "start": "YYYY-MM-DDTHH:MM:SSZ",
+          "end":   "YYYY-MM-DDTHH:MM:SSZ",
+          "fields": ["temperature", ...] # optional
+        }
+
+RANGE KEYWORDS
+    latest          Return the single most-recent document
+    first           Return the very first document on record
+    all             Return *all* data in the collection
+    today           Local day in Europe/London
+    yesterday       Previous local day
+    last24h         Rolling 24-hour window (now minus 24 h)
+    last7days       Rolling 7-day window
+    week            ISO week containing “now”
+    month           Calendar month containing “now”
+    year            Calendar year containing “now”
+    day=<1-366>     Ordinal day of current year
+    week=<1-53>     ISO week number of current year
+    month=<1-12>    Calendar month number of current year
+    year=<YYYY>     An absolute year (±100 y from current)
+
+FIELD SELECTION
+    • If *fields* is omitted, **all** columns listed in `ALL_POSSIBLE_FIELDS`
+      are returned.  
+    • `timestamp_UTC` is always included even if you omit it.
+
+    Valid field names (case-sensitive):
+        timestamp_UTC, temperature, humidity, pressure, rain,
+        rain_rate, luminance, wind_speed, wind_direction
+
+EXAMPLE REQUESTS
+    # Curl – latest reading, all fields
+    curl -X POST \
+         -H "Content-Type: application/json" \
+         -d '{"range":"latest"}' \
+         https://…/get_weather_data
+
+    # Curl – yesterday’s humidity and temperature only
+    curl -X POST \
+         -H "Content-Type: application/json" \
+         -d '{"range":"yesterday", "fields":["temperature","humidity"]}' \
+         https://…/get_weather_data
+
+    # Python – explicit window
+    import requests, json, datetime as dt
+    window = {
+        "start": (dt.datetime.utcnow()-dt.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "end":   dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "fields": ["temperature","rain"]
+    }
+    r = requests.post("https://…/get_weather_data", json=window)
+    print(r.json())
+
+RESPONSE
+    Success (HTTP 200) – JSON array of documents, ascending by timestamp
+        [
+          {
+            "timestamp_UTC": "2025-06-05T14:20:33.123456+00:00",
+            "temperature": 22.8,
+            "humidity": 54.7,
+            …
+          },
+          …
+        ]
+
+ERRORS
+    400 Bad Request   • Missing/invalid JSON  
+                      • Unknown range keyword or field name  
+                      • Malformed start/end timestamps
+    500 Internal      • Firestore unavailable or unexpected exception
+
+PERFORMANCE NOTES
+    • Queries are bounded by the supplied time window and projected
+      field list; narrower requests return faster.  
+    • `latest` and `first` execute with a Firestore *limit 1* optimized query.  
+    • Log timings are emitted at INFO level for observability.
+
+ENVIRONMENT
+    • Firestore database-ID expected: “weatherdata”.  
+    • Service operates in Europe/London local time for relative ranges.
+    • Dependencies: Flask, google-cloud-firestore, python-dateutil.
+
+COPYRIGHT
+    © 2025 Steven Meers. MIT License.
+"""
+
 import json
 import logging
-from datetime import datetime, timedelta, date # 'datetime' here is the datetime.datetime class
+from datetime import datetime, timedelta, date
 from dateutil import tz
 from flask import Request, jsonify
-from google.cloud import firestore # Keep this import
+from google.cloud import firestore
 from google.cloud.exceptions import GoogleCloudError
 from typing import Optional, Tuple, Dict, Any
 import calendar
@@ -23,11 +137,16 @@ if not LONDON_TZ:
     logging.critical("Failed to get 'Europe/London' timezone. Please ensure dateutil is properly configured.")
     LONDON_TZ = tz.tzutc()
 
+# Define ALL possible fields in your Firestore documents.
+# This list is used as the default if no specific fields are requested.
+ALL_POSSIBLE_FIELDS = [
+    'timestamp_UTC', 'temperature', 'humidity', 'pressure', 'rain',
+    'rain_rate', 'luminance', 'wind_speed', 'wind_direction'
+]
 
-# --- Helper Function: get_time_range (NO CHANGES NEEDED HERE based on the error) ---
+
+# --- Helper Function: get_time_range ---
 def get_time_range(arg: str, current_local_time: datetime) -> Tuple[Optional[datetime], Optional[datetime]]:
-    # ... (your existing code for get_time_range) ...
-    # This function appears logically sound for its purpose.
     start_utc_dt = None
     end_utc_dt = None
 
@@ -120,7 +239,7 @@ def get_time_range(arg: str, current_local_time: datetime) -> Tuple[Optional[dat
 
 # --- Cloud Function Entry Point: get_weather_data ---
 def get_weather_data(request: Request):
-    start_request_time = time.time() # Start timing for the entire request
+    start_request_time = time.time()
     logging.info(f"Function received request at {start_request_time:.2f}s")
 
     headers = {'Access-Control-Allow-Origin': '*'}
@@ -131,27 +250,35 @@ def get_weather_data(request: Request):
         logging.error("Firestore client is not initialized. Cannot process request.")
         return (jsonify({'error': 'Internal server configuration error: Firestore client unavailable'}), 500, headers)
 
-    # Your Firestore module inspection block is useful for debugging but not strictly part of the fix.
-    # You can keep it or remove it once the main issue is resolved.
-    # logging.info("--- Firestore module inspection ---")
-    # ... (your inspection code) ...
-    # logging.info("--- End Firestore module inspection ---")
-
     try:
         parse_json_start = time.time()
         request_json = request.get_json(silent=True)
         if not request_json:
             logging.warning("Request has no JSON payload or it's invalid.")
             return (jsonify({'error': 'Request must be JSON'}), 400, headers)
-        logging.info(f"Received JSON payload: {request_json}") # Log the actual payload
+        logging.info(f"Received JSON payload: {request_json}")
         parse_json_end = time.time()
         logging.info(f"JSON parsing took: {parse_json_end - parse_json_start:.4f}s")
+
+        # NEW: Determine requested fields
+        # If 'fields' are provided, use them. Otherwise, use all defined fields.
+        # Ensure 'timestamp_UTC' is always included, as it's crucial for time-based queries.
+        requested_fields = request_json.get('fields', ALL_POSSIBLE_FIELDS)
+        if 'timestamp_UTC' not in requested_fields:
+            requested_fields.insert(0, 'timestamp_UTC') # Add it at the beginning for consistency
+        
+        # Validate that requested_fields are known/valid to prevent unexpected behavior
+        for field in requested_fields:
+            if field not in ALL_POSSIBLE_FIELDS:
+                return (jsonify({'error': f"Invalid field requested: {field}"}), 400, headers)
+        
+        logging.info(f"Requested fields for Firestore query: {requested_fields}")
+
 
         start_utc_query = None
         end_utc_query = None
         limit_query = None
-        # order_direction = firestore.Query.ASCENDING # Default order
-        order_direction = "ASCENDING" # MODIFIED to string literal
+        order_direction = firestore.Query.ASCENDING # Use the Firestore enum for clarity
 
         if "range" in request_json:
             range_arg = request_json["range"]
@@ -161,14 +288,12 @@ def get_weather_data(request: Request):
 
             if range_arg == "latest":
                 limit_query = 1
-                # order_direction = firestore.Query.DESCENDING
-                order_direction = "DESCENDING" # MODIFIED to string literal
+                order_direction = firestore.Query.DESCENDING
             elif range_arg == "first":
                 limit_query = 1
-                # order_direction = firestore.Query.ASCENDING
-                order_direction = "ASCENDING" # MODIFIED to string literal (or rely on default)
+                order_direction = firestore.Query.ASCENDING
             elif range_arg == "all":
-                pass
+                pass # No limit, no specific time range for 'all'
             else:
                 if start_utc_query is None or end_utc_query is None:
                     raise ValueError("Invalid range argument resulted in null start/end times.")
@@ -186,7 +311,7 @@ def get_weather_data(request: Request):
             return (jsonify({'error': 'Invalid request. Expected "range" or "start"/"end" in JSON body.'}), 400, headers)
 
         collection_ref = db.collection('weather-readings')
-        query = collection_ref.order_by('timestamp_UTC', direction=order_direction) # Uses the string value
+        query = collection_ref.order_by('timestamp_UTC', direction=order_direction)
 
         if start_utc_query:
             query = query.where('timestamp_UTC', '>=', start_utc_query)
@@ -194,6 +319,10 @@ def get_weather_data(request: Request):
             query = query.where('timestamp_UTC', '<=', end_utc_query)
         if limit_query:
             query = query.limit(limit_query)
+        
+        # NEW: Apply .select() to only retrieve specified fields
+        query = query.select(requested_fields)
+
 
         # --- START Firestore Query Timing ---
         firestore_query_start = time.time()
@@ -205,8 +334,7 @@ def get_weather_data(request: Request):
             doc_count += 1
             data = doc.to_dict()
             # Convert Firestore Timestamp objects (which are Python datetime) to ISO strings
-            # if 'timestamp_UTC' in data and isinstance(data['timestamp_UTC'], firestore.Timestamp): # OLD LINE
-            if 'timestamp_UTC' in data and isinstance(data['timestamp_UTC'], datetime): # MODIFIED LINE
+            if 'timestamp_UTC' in data and isinstance(data['timestamp_UTC'], datetime):
                 data['timestamp_UTC'] = data['timestamp_UTC'].isoformat()
             results.append(data)
         
@@ -225,8 +353,7 @@ def get_weather_data(request: Request):
         end_request_time = time.time()
         logging.info(f"Total function execution time: {end_request_time - start_request_time:.4f}s")
 
-        #logging.info(f"Successfully retrieved {len(results)} documents.")
-        return (jsonify(results), 200, headers)
+        return (jsonify(results), 200, headers) # Changed from json_response to jsonify(results) for consistency
 
     except ValueError as ve:
         logging.warning(f"Argument parsing error: {ve}")
@@ -235,5 +362,6 @@ def get_weather_data(request: Request):
         logging.error(f"Firestore error: {str(gce)}")
         return (jsonify({'error': 'Database error occurred', 'details': str(gce)}), 500, headers)
     except Exception as e:
+        # Log the full traceback for unexpected errors
         logging.error(f"Unexpected error in get_weather_data: {str(e)}", exc_info=True)
         return (jsonify({'error': 'Internal server error', 'details': str(e)}), 500, headers)
