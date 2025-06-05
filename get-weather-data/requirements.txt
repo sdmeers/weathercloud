@@ -1,3 +1,7 @@
 google-cloud-firestore>=2.15.0  # Ensure a recent version is installed
-Flask
-python-dateutil
+#Flask
+#python-dateutil
+mcp[cli]>=0.5.0
+flask>=2.3
+#google-cloud-firestore>=2.14
+python-dateutil>=2.9
