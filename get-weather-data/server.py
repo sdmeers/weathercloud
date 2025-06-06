@@ -1,83 +1,79 @@
 """
-weather-mcp / server.py
-DIY MCP server that wraps the get_weather_data Cloud Function.
+Minimal MCP-compatible wrapper for get_weather_data().
+No external SDK required.
 """
 
-import json
-import re
-from flask import Request
-from mcp.server import MCPServer, Action, Field
-import functions_framework           # fabricate Request objects
-from main import get_weather_data     # your Cloud Function
+import json, re
+from flask import Flask, request, jsonify
+from werkzeug.test import EnvironBuilder
+from flask import Request as FlaskRequest
+from main import get_weather_data
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 1. Parameter schema
-# ──────────────────────────────────────────────────────────────────────────────
-ALL_POSSIBLE_FIELDS = [
+app = Flask(__name__)
+
+# ─── schema used for GET / ────────────────────────────────────────────
+ALL_FIELDS = [
     "timestamp_UTC", "temperature", "humidity", "pressure", "rain",
     "rain_rate", "luminance", "wind_speed", "wind_direction",
 ]
 
-TIME_RANGE_PATTERN = re.compile(
-    r"""^(
-          (latest|first|all|
-           today|yesterday|
-           last24h|last7days|
-           week|month|year)            # plain keywords
-          |
-          day=\d{1,3}                 # day=<1-366>
-          |week=\d{1,2}               # week=<1-53>
-          |month=\d{1,2}              # month=<1-12>
-          |year=\d{4}                 # year=<YYYY>
-        )$""",
-    re.VERBOSE,
-).pattern
+TIME_RANGE_PATTERN = r"^((latest|first|all|" \
+                     r"today|yesterday|last24h|last7days|" \
+                     r"week|month|year)|" \
+                     r"day=\d{1,3}|week=\d{1,2}|month=\d{1,2}|year=\d{4})$"
 
-PARAMETERS = {
-    "range":  Field(
-        str,
-        pattern=TIME_RANGE_PATTERN,
-        description=(            "Time window keyword (e.g. \"latest\", \"week\", \"week=23\", "
-            "\"year=2024\")."
-        ),
-    ),
-    "start":  Field(str, required=False, description="UTC ISO start timestamp"),
-    "end":    Field(str, required=False, description="UTC ISO end timestamp"),
-    "fields": Field(
-        list[str],
-        required=False,
-        items=Field(str, enum=ALL_POSSIBLE_FIELDS),
-        description="Optional list of field names to include.",
-    ),
+SCHEMA = {
+    "name": "weatherstation",
+    "version": "1",
+    "actions": {
+        "queryWeather": {
+            "description": "Return Firestore weather readings.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range":  {"type": "string", "pattern": TIME_RANGE_PATTERN},
+                    "start":  {"type": "string"},
+                    "end":    {"type": "string"},
+                    "fields": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ALL_FIELDS},
+                    },
+                },
+                "required": ["range"],
+                "additionalProperties": False,
+            },
+        }
+    },
 }
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 2. MCP Action
-# ──────────────────────────────────────────────────────────────────────────────
-class QueryWeather(Action):
-    name = "queryWeather"
-    description = "Return weather-station readings from Firestore."
-    parameters = PARAMETERS
+# ─── helper to reuse Cloud-Function code unchanged ────────────────────
+def _make_flask_request(body: dict) -> FlaskRequest:
+    builder = EnvironBuilder(
+        path="/", method="POST",
+        headers={"Content-Type": "application/json"},
+        data=json.dumps(body),
+    )
+    return FlaskRequest(builder.get_environ())
 
-    def run(self, **kwargs):
-        """Forward the call to get_weather_data() unchanged."""
-        fake_request = functions_framework.Request(
-            path="/",
-            headers={"content-type": "application/json"},
-            body=json.dumps(kwargs).encode(),
-        )
-        response, status, _ = get_weather_data(fake_request)
-        if status != 200:
-            # Bubble up Cloud Function errors as MCP errors
-            raise RuntimeError(response.get_json().get("error"))
-        return response.get_json()    # must be JSON-serialisable
+# ─── routes ───────────────────────────────────────────────────────────
+@app.get("/")
+def describe():
+    """Return tool metadata (MCP self-description)."""
+    return jsonify(SCHEMA)
 
+@app.post("/")
+def call_tool():
+    """Accept OpenAI-style tool call and proxy to get_weather_data()."""
+    payload = request.get_json(silent=True) or {}
+    if payload.get("name") != "queryWeather":
+        return jsonify({"error": "Unknown or missing tool name"}), 400
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 3. Server bootstrap
-# ──────────────────────────────────────────────────────────────────────────────
-server = MCPServer(name="weatherstation", actions=[QueryWeather()])
+    fake_req = _make_flask_request(payload.get("arguments", {}))
+    resp, status, _ = get_weather_data(fake_req)
+    return resp, status
 
+# ─── entry-point ──────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # Expose HTTP on port 8080 (Cloud Run default), plus stdio/SSE.
-    server.serve_http(host="0.0.0.0", port=8080)
+    # Cloud Run sets PORT=8080
+    import os
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
