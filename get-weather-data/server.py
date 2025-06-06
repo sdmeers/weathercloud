@@ -37,8 +37,7 @@ PARAMETERS = {
     "range":  Field(
         str,
         pattern=TIME_RANGE_PATTERN,
-        description=(
-            "Time window keyword (e.g. \"latest\", \"week\", \"week=23\", "
+        description=(            "Time window keyword (e.g. \"latest\", \"week\", \"week=23\", "
             "\"year=2024\")."
         ),
     ),
