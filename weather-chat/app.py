@@ -1,45 +1,162 @@
-import sys
-import importlib.metadata
-import google.cloud.aiplatform as gap        # add this back
+# app.py – Streamlit × Vertex AI weather chatbot
+# ----------------------------------------------
+# pip install streamlit google-cloud-aiplatform vertexai requests
 
-# ─── print Vertex-AI SDK version to Cloud Run logs ─────────────────────
-print(
-    "==== Vertex-AI SDK:",
-    importlib.metadata.version("google-cloud-aiplatform"),
-    file=sys.stderr,
-    flush=True,
-)
-
-# ─── core imports ──────────────────────────────────────────────────────
+import json
+import requests
 import streamlit as st
 import vertexai
-from vertexai.preview.generative_models import GenerativeModel, Tool
-
-# Show which SDK version actually got installed
-st.write("Vertex AI SDK version:", gap.__version__)   # <--- leave this for now
-
-# 1) Initialise Vertex AI
-vertexai.init(project="weathercloud-460719", location="europe-west2")
-
-# 2) MCP tool
-weather_tool = Tool.from_mcp_url(
-    "https://weather-mcp-728445650450.europe-west2.run.app"
+from vertexai.preview.generative_models import (
+    GenerativeModel,
+    Tool,
+    FunctionDeclaration,
+    Part,
+    Content,
 )
 
-# 3) Gemma 7-B IT model with the tool attached
-model = GenerativeModel("gemma-7b-it", tools=[weather_tool])
+# ── Vertex AI init ────────────────────────────────────────────────────
+vertexai.init(project="weathercloud-460719", location="us-central1")
+MODEL_ID = "gemini-1.0-pro"            # universally available
+# ---------------------------------------------------------------------
 
-# ──────────────────────────────────  Streamlit chat loop  ──────────────────────────────────
+# ── System prompt ─────────────────────────────────────────────────────
+SYSTEM_PROMPT = """
+You are a weather-station analyst.
+
+When you need data, call **query_weather** with
+`range_param` and optional `fields`. Legal ranges:
+
+• latest · today · yesterday · last24h · last7days
+• day=N, week=N, month=N, year=YYYY
+• ISO-8601 interval (e.g. 2025-01-01T00:00Z/2025-02-01T00:00Z)
+
+After the tool returns JSON:
+1. Pick columns that match the user request
+2. Do max / min / mean / sum
+3. Round to 1 decimal place
+4. Answer in one short sentence + unit (°C, mm, hPa, m s⁻¹)
+5. If no data, apologise briefly
+
+Never reveal code, tool calls or raw JSON.
+"""
+
+# ── Weather MCP tool implementation ───────────────────────────────────
+def query_weather(range_param: str = "latest", fields: list | None = None) -> str:
+    """Call the MCP server and return JSON-encoded text."""
+    if fields is None:
+        fields = ["timestamp_UTC", "temperature", "humidity",
+                  "pressure", "wind_speed"]
+
+    payload = {
+        "name": "queryWeather",
+        "arguments": {"range": range_param, "fields": fields},
+    }
+
+    try:
+        r = requests.post(
+            "https://weather-mcp-728445650450.europe-west2.run.app",
+            json=payload,
+            timeout=10,
+        )
+        r.raise_for_status()
+        return json.dumps(r.json(), indent=2)
+    except Exception as exc:
+        return json.dumps({"error": str(exc)})
+
+# Vertex-AI function declaration
+weather_function = FunctionDeclaration(
+    name="query_weather",
+    description="Retrieve weather-station data by time range.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "range_param": {
+                "type": "string",
+                "description": "latest, today, yesterday, last24h, last7days, "
+                               "day=N, week=N, month=N, year=YYYY, or ISO-8601 interval",
+                "default": "latest",
+            },
+            "fields": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Weather fields to return.",
+                "default": ["timestamp_UTC", "temperature", "humidity",
+                            "pressure", "wind_speed"],
+            },
+        },
+        "required": ["range_param"],
+    },
+)
+
+weather_tool = Tool(function_declarations=[weather_function])
+
+# Load Gemini with the tool attached
+model = GenerativeModel(MODEL_ID, tools=[weather_tool])
+
+# ── Streamlit UI ───────────────────────────────────────────────────────
+st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️")
 st.title("Weather-Station Chatbot 🌤️")
 
-if "hist" not in st.session_state:
-    st.session_state.hist = []
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-msg = st.chat_input("Ask me about the weather…")
-if msg:
-    st.session_state.hist.append({"role": "user", "parts": [msg]})
-    resp = model.generate_content(st.session_state.hist)
-    st.session_state.hist.append({"role": "model", "parts": [resp.text]})
+# ── Chat loop ─────────────────────────────────────────────────────────
+user_msg = st.chat_input("Ask me about the weather…")
+if user_msg:
+    # show user bubble & store
+    st.chat_message("user").markdown(user_msg)
+    st.session_state.messages.append({"role": "user", "content": user_msg})
 
-for m in st.session_state.hist:
-    st.chat_message(m["role"]).markdown(m["parts"][0])
+    # build conversation: system + history
+    convo: list[Content] = [
+        Content(role="system", parts=[Part.from_text(SYSTEM_PROMPT)])
+    ]
+    for m in st.session_state.messages:
+        role = "user" if m["role"] == "user" else "model"
+        convo.append(Content(role=role, parts=[Part.from_text(m["content"])]))
+
+    # First pass
+    try:
+        first = model.generate_content(convo)
+    except Exception as exc:
+        err = f"Error: {exc}"
+        st.chat_message("assistant").markdown(err)
+        st.session_state.messages.append({"role": "assistant", "content": err})
+        st.stop()
+
+    # Extract any tool calls
+    calls = [p.function_call for p in first.candidates[0].content.parts
+             if p.function_call]
+
+    if calls:
+        # fulfil call(s) then second pass
+        for fc in calls:
+            if fc.name == "query_weather":
+                rng  = fc.args.get("range_param", "latest")
+                flds = fc.args.get("fields", ["timestamp_UTC", "temperature",
+                                              "humidity", "pressure", "wind_speed"])
+                data_json = query_weather(rng, flds)
+
+                convo.extend([
+                    Content(role="model", parts=[Part.from_function_call(fc)]),
+                    Content(role="function", parts=[
+                        Part.from_function_response(
+                            name="query_weather",
+                            response={"content": data_json},
+                        )
+                    ]),
+                ])
+
+        try:
+            second = model.generate_content(convo)
+            assistant_reply = second.text
+        except Exception as exc:
+            assistant_reply = f"Error: {exc}"
+    else:
+        assistant_reply = first.text
+
+    # show & cache reply
+    st.chat_message("assistant").markdown(assistant_reply)
+    st.session_state.messages.append(
+        {"role": "assistant", "content": assistant_reply}
+    )
