@@ -16,7 +16,7 @@ from vertexai.preview.generative_models import (
 
 # ── Vertex AI init ────────────────────────────────────────────────────
 vertexai.init(project="weathercloud-460719", location="us-central1")
-MODEL_ID = "gemini-1.0-pro"            # universally available
+MODEL_ID = "gemini-2.0-flash-lite-001"            # universally available
 # ---------------------------------------------------------------------
 
 # ── System prompt ─────────────────────────────────────────────────────
@@ -59,8 +59,16 @@ def query_weather(range_param: str = "latest", fields: list | None = None) -> st
             timeout=10,
         )
         r.raise_for_status()
-        return json.dumps(r.json(), indent=2)
+        response_data = r.json()
+        
+        # Debug logging
+        st.write("**DEBUG: Weather API Response:**")
+        st.json(response_data)
+        
+        return json.dumps(response_data, indent=2)
     except Exception as exc:
+        error_msg = f"Weather API Error: {str(exc)}"
+        st.error(error_msg)
         return json.dumps({"error": str(exc)})
 
 # Vertex-AI function declaration
@@ -90,8 +98,12 @@ weather_function = FunctionDeclaration(
 
 weather_tool = Tool(function_declarations=[weather_function])
 
-# Load Gemini with the tool attached
-model = GenerativeModel(MODEL_ID, tools=[weather_tool])
+# Load Gemini with the tool attached and system instruction
+model = GenerativeModel(
+    MODEL_ID, 
+    tools=[weather_tool], 
+    system_instruction=SYSTEM_PROMPT
+)
 
 # ── Streamlit UI ───────────────────────────────────────────────────────
 st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️")
@@ -107,10 +119,8 @@ if user_msg:
     st.chat_message("user").markdown(user_msg)
     st.session_state.messages.append({"role": "user", "content": user_msg})
 
-    # build conversation: system + history
-    convo: list[Content] = [
-        Content(role="system", parts=[Part.from_text(SYSTEM_PROMPT)])
-    ]
+    # build conversation: history only (no system role)
+    convo: list[Content] = []
     for m in st.session_state.messages:
         role = "user" if m["role"] == "user" else "model"
         convo.append(Content(role=role, parts=[Part.from_text(m["content"])]))
@@ -130,11 +140,16 @@ if user_msg:
 
     if calls:
         # fulfil call(s) then second pass
+        st.write("**DEBUG: Tool calls detected:**")
+        st.json([{"name": fc.name, "args": dict(fc.args)} for fc in calls])
+        
         for fc in calls:
             if fc.name == "query_weather":
                 rng  = fc.args.get("range_param", "latest")
                 flds = fc.args.get("fields", ["timestamp_UTC", "temperature",
                                               "humidity", "pressure", "wind_speed"])
+                
+                st.write(f"**DEBUG: Calling weather API with range='{rng}', fields={flds}**")
                 data_json = query_weather(rng, flds)
 
                 convo.extend([
