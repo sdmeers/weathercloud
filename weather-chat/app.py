@@ -23,21 +23,25 @@ MODEL_ID = "gemini-2.0-flash-lite-001"            # universally available
 SYSTEM_PROMPT = """
 You are a weather-station analyst.
 
-When you need data, call **query_weather** with
-`range_param` and optional `fields`. Legal ranges:
+IMPORTANT: You must ALWAYS call the query_weather tool to get real-time data. Never guess or provide cached information.
 
+When asked about weather data, ALWAYS call **query_weather** with:
+- `range_param` and optional `fields`. 
+
+Legal ranges:
 • latest · today · yesterday · last24h · last7days
 • day=N, week=N, month=N, year=YYYY
 • ISO-8601 interval (e.g. 2025-01-01T00:00Z/2025-02-01T00:00Z)
 
 After the tool returns JSON:
 1. Pick columns that match the user request
-2. Do max / min / mean / sum
+2. Do max / min / mean / sum calculations
 3. Round to 1 decimal place
 4. Answer in one short sentence + unit (°C, mm, hPa, m s⁻¹)
 5. If no data, apologise briefly
 
-Never reveal code, tool calls or raw JSON.
+Never provide weather information without calling the tool first.
+Never reveal code, tool calls or raw JSON to the user.
 """
 
 # ── Weather MCP tool implementation ───────────────────────────────────
@@ -128,6 +132,19 @@ if user_msg:
     # First pass
     try:
         first = model.generate_content(convo)
+        st.write("**DEBUG: First response received**")
+        
+        # Check if response has function calls or text
+        if first.candidates and first.candidates[0].content.parts:
+            parts = first.candidates[0].content.parts
+            text_parts = [p.text for p in parts if hasattr(p, 'text') and p.text]
+            function_parts = [p.function_call for p in parts if hasattr(p, 'function_call') and p.function_call]
+            
+            st.write(f"**DEBUG: Found {len(text_parts)} text parts and {len(function_parts)} function calls**")
+            
+            if text_parts:
+                st.write(f"**DEBUG: Text parts:** {text_parts}")
+        
     except Exception as exc:
         err = f"Error: {exc}"
         st.chat_message("assistant").markdown(err)
@@ -136,7 +153,9 @@ if user_msg:
 
     # Extract any tool calls
     calls = [p.function_call for p in first.candidates[0].content.parts
-             if p.function_call]
+             if hasattr(p, 'function_call') and p.function_call]
+    
+    st.write(f"**DEBUG: Found {len(calls)} tool calls**")
 
     if calls:
         # fulfil call(s) then second pass
@@ -145,22 +164,38 @@ if user_msg:
         
         for fc in calls:
             if fc.name == "query_weather":
-                rng  = fc.args.get("range_param", "latest")
-                flds = fc.args.get("fields", ["timestamp_UTC", "temperature",
-                                              "humidity", "pressure", "wind_speed"])
+                rng = fc.args.get("range_param", "latest")
+                flds_raw = fc.args.get("fields", ["timestamp_UTC", "temperature",
+                                                  "humidity", "pressure", "wind_speed"])
+                
+                # Convert RepeatedComposite to regular Python list
+                if hasattr(flds_raw, '__iter__') and not isinstance(flds_raw, str):
+                    flds = list(flds_raw)
+                else:
+                    flds = flds_raw if isinstance(flds_raw, list) else [flds_raw]
                 
                 st.write(f"**DEBUG: Calling weather API with range='{rng}', fields={flds}**")
                 data_json = query_weather(rng, flds)
 
-                convo.extend([
-                    Content(role="model", parts=[Part.from_function_call(fc)]),
-                    Content(role="function", parts=[
-                        Part.from_function_response(
-                            name="query_weather",
-                            response={"content": data_json},
-                        )
-                    ]),
-                ])
+                # Find the original function call part from the first response
+                fc_part = None
+                for part in first.candidates[0].content.parts:
+                    if hasattr(part, 'function_call') and part.function_call and part.function_call.name == "query_weather":
+                        fc_part = part
+                        break
+                
+                if fc_part:
+                    convo.extend([
+                        Content(role="model", parts=[fc_part]),
+                        Content(role="function", parts=[
+                            Part.from_function_response(
+                                name="query_weather",
+                                response={"content": data_json},
+                            )
+                        ]),
+                    ])
+                else:
+                    st.error("Could not find function call part")
 
         try:
             second = model.generate_content(convo)
@@ -168,7 +203,12 @@ if user_msg:
         except Exception as exc:
             assistant_reply = f"Error: {exc}"
     else:
-        assistant_reply = first.text
+        # No function calls, extract text from parts
+        if first.candidates and first.candidates[0].content.parts:
+            text_parts = [p.text for p in first.candidates[0].content.parts if hasattr(p, 'text') and p.text]
+            assistant_reply = ' '.join(text_parts) if text_parts else "No response generated."
+        else:
+            assistant_reply = "No response generated."
 
     # show & cache reply
     st.chat_message("assistant").markdown(assistant_reply)
