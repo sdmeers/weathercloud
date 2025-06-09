@@ -6,3 +6,4 @@ flask>=2.3
 google-cloud-firestore>=2.14
 python-dateutil>=2.9
 werkzeug>=3        # flask pulls it anyway; explicit for clarity
+pandas
