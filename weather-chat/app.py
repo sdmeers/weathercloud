@@ -21,39 +21,67 @@ MODEL_ID = "gemini-2.0-flash-lite-001"            # universally available
 
 # ── System prompt ─────────────────────────────────────────────────────
 SYSTEM_PROMPT = """
-You are a weather-station analyst.
+You are a weather-station analyst that provides precise, helpful weather information.
 
 IMPORTANT: You must ALWAYS call the query_weather tool to get real-time data. Never guess or provide cached information.
 
-When asked about weather data, ALWAYS call **query_weather** with:
-- `range_param` and optional `fields`. 
+When asked about weather data, call **query_weather** with:
+- `range_param`: Time range for the data
+- `fields`: Relevant weather fields (optional)  
+- `operation`: Aggregation operation (optional, defaults to "raw")
 
-Legal ranges:
-• latest · today · yesterday · last24h · last7days
+**Legal ranges:**
+• latest, today, yesterday, last24h, last7days
 • day=N, week=N, month=N, year=YYYY
 • ISO-8601 interval (e.g. 2025-01-01T00:00Z/2025-02-01T00:00Z)
 
-After the tool returns JSON:
-1. Pick columns that match the user request
-2. Do max / min / mean / sum calculations
-3. Round to 1 decimal place
-4. Answer in one short sentence + unit (°C, mm, hPa, m s⁻¹)
-5. If no data, apologise briefly
+**Available operations:**
+• raw: Return all data points (default)
+• max: Maximum values (for "highest", "warmest", "maximum")
+• min: Minimum values (for "lowest", "coldest", "minimum") 
+• mean: Average values (for "average", "typical")
+• sum: Total values (for "total rainfall", "total")
+• count: Number of records
 
-Never provide weather information without calling the tool first.
-Never reveal code, tool calls or raw JSON to the user.
+**Field mapping:**
+• Temperature questions → "temperature" field
+• Pressure questions → "pressure" field  
+• Humidity questions → "humidity" field
+• Rain/rainfall questions → "rain" field
+• Wind questions → "wind_speed", "wind_direction" fields
+
+**Examples of operation selection:**
+• "What was the maximum temperature yesterday?" → operation="max", fields=["temperature"]
+• "How much rain fell in January?" → operation="sum", fields=["rain"]
+• "What was the average humidity last week?" → operation="mean", fields=["humidity"]
+• "What's the current temperature?" → operation="raw", range_param="latest", fields=["temperature"]
+
+**Response format:**
+1. Extract the key information from the returned data
+2. Provide a clear, concise answer with appropriate units (°C, mm, hPa, m/s, %)
+3. Round numbers to 1 decimal place when presenting to user
+4. If no data available, apologize briefly and suggest checking the time range
+
+**Important:**
+- Always use the most appropriate operation for the user's question
+- Never reveal raw JSON, tool calls, or technical details to the user
+- Keep responses conversational and helpful
+- Include units in your responses (temperature in °C, rain in mm, etc.)
 """
 
 # ── Weather MCP tool implementation ───────────────────────────────────
-def query_weather(range_param: str = "latest", fields: list | None = None) -> str:
+def query_weather(range_param: str = "latest", fields: list | None = None, operation: str = "raw") -> str:
     """Call the MCP server and return JSON-encoded text."""
     if fields is None:
-        fields = ["timestamp_UTC", "temperature", "humidity",
-                  "pressure", "wind_speed"]
+        fields = ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"]
 
     payload = {
         "name": "queryWeather",
-        "arguments": {"range": range_param, "fields": fields},
+        "arguments": {
+            "range": range_param, 
+            "fields": fields,
+            "operation": operation
+        },
     }
 
     try:
@@ -65,7 +93,7 @@ def query_weather(range_param: str = "latest", fields: list | None = None) -> st
         r.raise_for_status()
         response_data = r.json()
         
-        # Debug logging
+        # Debug logging (remove in production)
         st.write("**DEBUG: Weather API Response:**")
         st.json(response_data)
         
@@ -78,22 +106,27 @@ def query_weather(range_param: str = "latest", fields: list | None = None) -> st
 # Vertex-AI function declaration
 weather_function = FunctionDeclaration(
     name="query_weather",
-    description="Retrieve weather-station data by time range.",
+    description="Retrieve weather-station data by time range with optional aggregation.",
     parameters={
         "type": "object",
         "properties": {
             "range_param": {
                 "type": "string",
-                "description": "latest, today, yesterday, last24h, last7days, "
+                "description": "Time range: latest, today, yesterday, last24h, last7days, "
                                "day=N, week=N, month=N, year=YYYY, or ISO-8601 interval",
                 "default": "latest",
             },
             "fields": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Weather fields to return.",
-                "default": ["timestamp_UTC", "temperature", "humidity",
-                            "pressure", "wind_speed"],
+                "description": "Weather fields to return: temperature, humidity, pressure, rain, wind_speed, etc.",
+                "default": ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"],
+            },
+            "operation": {
+                "type": "string",
+                "enum": ["raw", "max", "min", "mean", "sum", "count"],
+                "description": "Aggregation operation: raw (no aggregation), max, min, mean, sum, count",
+                "default": "raw",
             },
         },
         "required": ["range_param"],
