@@ -47,14 +47,19 @@ When asked about weather data, call **query_weather** with:
 • Temperature questions → "temperature" field
 • Pressure questions → "pressure" field  
 • Humidity questions → "humidity" field
-• Rain/rainfall questions → "rain" field
-• Wind questions → "wind_speed", "wind_direction" fields
+• Rain/rainfall total questions → "rain" field
+• Rain rate questions → "rain_rate" field
+• Light/brightness questions → "luminance" field
+• Wind speed questions → "wind_speed" field
+• Wind direction questions → "wind_direction" field
 
 **Examples of operation selection:**
 • "What was the maximum temperature yesterday?" → operation="max", fields=["temperature"]
 • "How much rain fell in January?" → operation="sum", fields=["rain"]
 • "What was the average humidity last week?" → operation="mean", fields=["humidity"]
-• "What's the current temperature?" → operation="raw", range_param="latest", fields=["temperature"]
+• "What's the current rain rate?" → operation="raw", range_param="latest", fields=["rain_rate"]
+• "What was the highest wind speed today?" → operation="max", fields=["wind_speed"]
+• "How bright was it yesterday?" → operation="max", fields=["luminance"]
 
 **Response format:**
 1. Extract the key information from the returned data
@@ -119,7 +124,7 @@ weather_function = FunctionDeclaration(
             "fields": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Weather fields to return: temperature, humidity, pressure, rain, wind_speed, etc.",
+                "description": "Weather fields: temperature, humidity, pressure, rain, rain_rate, luminance, wind_speed, wind_direction",
                 "default": ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"],
             },
             "operation": {
