@@ -141,19 +141,25 @@ def _aggregate_data(data, operation, fields):
         
         # Add metadata with unit information
         timestamps = [record.get('timestamp_UTC') for record in data if record.get('timestamp_UTC')]
+
+        # Define the full unit mapping
+        UNIT_MAP = {
+            "temperature": "°C",
+            "humidity": "%", 
+            "pressure": "hPa",
+            "rain": "mm",
+            "rain_rate": "mm/hr",
+            "wind_speed": "mph",
+            "luminance": "lux"
+        }
+
+        # In the _aggregate_data function, replace the metadata section with:
         result["_metadata"] = {
             "operation": operation,
             "record_count": len(data),
             "time_range": f"{min(timestamps)} to {max(timestamps)}" if timestamps else "unknown",
-            "units": {
-                "temperature": "°C",
-                "humidity": "%",
-                "pressure": "hPa",
-                "rain": "mm",
-                "rain_rate": "mm/hr",
-                "wind_speed": "mph",
-                "luminance": "lux"
-            }
+            "units": {field: UNIT_MAP[field] for field in result.keys() 
+                    if field in UNIT_MAP and field != "_metadata"}
         }
         
         return result
