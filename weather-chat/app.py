@@ -85,14 +85,21 @@ When asked about weather data, call **query_weather** with:
 # ── Weather MCP tool implementation ───────────────────────────────────
 def query_weather(range_param: str = "latest", fields: list | None = None, operation: str = "raw") -> str:
     """Call the MCP server and return JSON-encoded text."""
+    # Ensure fields is always a standard Python list for JSON serialization
     if fields is None:
-        fields = ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"]
+        fields_for_payload = ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"]
+    elif not isinstance(fields, list):
+        # This handles cases where fields might be a RepeatedComposite or other non-list type
+        # that behaves like an iterable but isn't a native list for JSON serialization.
+        fields_for_payload = list(fields)
+    else:
+        fields_for_payload = fields
 
     payload = {
         "name": "queryWeather",
         "arguments": {
             "range": range_param,  
-            "fields": fields,
+            "fields": fields_for_payload, # Use the converted fields list here
             "operation": operation
         },
     }
@@ -235,25 +242,35 @@ if user_msg:
         for fc in calls:
             if fc.name == "query_weather":
                 rng = fc.args.get("range_param", "latest")
-                # Corrected: Ensure fields is a proper list, especially if it comes as a string representation
-                flds = fc.args.get("fields")
-                if isinstance(flds, str):
-                    # Attempt to safely parse the string as a list
-                    try:
-                        flds = json.loads(flds.replace("'", "\"")) # Replace single quotes with double for valid JSON
-                    except json.JSONDecodeError:
-                        flds = [flds] # Fallback if parsing fails, treat as single field
-                elif flds is None:
-                    flds = ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"] # Default if None
-                elif not isinstance(flds, list):
-                    flds = [flds] # Ensure it's a list if it's a single non-string item
-                
                 op = fc.args.get("operation", "raw")
                 
-                if st.session_state.debug_mode:
-                    st.write(f"**DEBUG: Calling weather API with range='{rng}', fields={flds}, operation='{op}'**")
+                # Retrieve fields from function call arguments
+                flds = fc.args.get("fields")
                 
-                data_json = query_weather(rng, flds, op)
+                # --- START OF CRITICAL CHANGE ---
+                # Ensure 'fields' is a proper Python list for JSON serialization.
+                # The Vertex AI SDK might return a RepeatedComposite object, which behaves like a list
+                # but needs explicit conversion for JSON.
+                if flds is None:
+                    # If fields was not provided in the tool call, use the default from query_weather
+                    flds_for_api = ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"]
+                elif hasattr(flds, '__iter__') and not isinstance(flds, (str, list)):
+                    # This covers RepeatedComposite and similar iterable non-list types
+                    flds_for_api = list(flds)
+                elif isinstance(flds, str):
+                    # Handle cases where it might be a string representation of a list (less common for direct model output)
+                    try:
+                        flds_for_api = json.loads(flds.replace("'", "\""))
+                    except json.JSONDecodeError:
+                        flds_for_api = [flds] # Fallback
+                else:
+                    flds_for_api = flds # Already a list
+                # --- END OF CRITICAL CHANGE ---
+                
+                if st.session_state.debug_mode:
+                    st.write(f"**DEBUG: Calling weather API with range='{rng}', fields={flds_for_api}, operation='{op}'**")
+                
+                data_json = query_weather(rng, flds_for_api, op) # Pass the properly converted list
                 
                 # Add function response to conversation
                 function_responses.append(
@@ -277,7 +294,7 @@ if user_msg:
                 
         except Exception as exc:
             assistant_reply = f"Error processing weather data: {exc}"
-            if st.session_state.debug_mode:
+            if st.session_state.debug_olde:
                 st.write(f"**DEBUG: Error in second pass: {exc}")
     else:
         # No function calls, extract text from parts
