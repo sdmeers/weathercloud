@@ -53,6 +53,17 @@ SCHEMA = {
     },
 }
 
+# Define the full unit mapping
+UNIT_MAP = {
+    "temperature": "°C",
+    "humidity": "%", 
+    "pressure": "hPa",
+    "rain": "mm",
+    "rain_rate": "mm/hr",
+    "wind_speed": "mph",
+    "luminance": "lux"
+}
+
 def _make_flask_request(body: dict) -> FlaskRequest:
     """Helper to reuse Cloud-Function code unchanged."""
     builder = EnvironBuilder(
@@ -75,7 +86,10 @@ def _convert_units(value, field):
 
 def _aggregate_data(data, operation, fields):
     """Apply aggregation operation to the data using pure Python."""
-    if not data or operation == "raw":
+    if not data:
+        return data
+    
+    if operation == "raw":
         # Apply unit conversions to raw data
         if isinstance(data, list):
             converted_data = []
@@ -88,7 +102,23 @@ def _aggregate_data(data, operation, fields):
                         except (ValueError, TypeError):
                             pass
                 converted_data.append(converted_record)
-            return converted_data
+            
+            # Add metadata for raw data too
+            timestamps = [record.get('timestamp_UTC') for record in converted_data if record.get('timestamp_UTC')]
+            
+            # Determine which fields are actually present in the data
+            present_fields = set()
+            for record in converted_data:
+                present_fields.update(record.keys())
+            
+            metadata = {
+                "operation": "raw",
+                "record_count": len(converted_data),
+                "time_range": f"{min(timestamps)} to {max(timestamps)}" if timestamps else "unknown",
+                "units": {field: UNIT_MAP[field] for field in present_fields if field in UNIT_MAP}
+            }
+            
+            return {"data": converted_data, "_metadata": metadata}
         return data
     
     try:
@@ -142,18 +172,6 @@ def _aggregate_data(data, operation, fields):
         # Add metadata with unit information
         timestamps = [record.get('timestamp_UTC') for record in data if record.get('timestamp_UTC')]
 
-        # Define the full unit mapping
-        UNIT_MAP = {
-            "temperature": "°C",
-            "humidity": "%", 
-            "pressure": "hPa",
-            "rain": "mm",
-            "rain_rate": "mm/hr",
-            "wind_speed": "mph",
-            "luminance": "lux"
-        }
-
-        # In the _aggregate_data function, replace the metadata section with:
         result["_metadata"] = {
             "operation": operation,
             "record_count": len(data),
@@ -199,9 +217,8 @@ def call_tool():
     except:
         return jsonify({"error": "Failed to parse weather data"}), 500
     
-    # Apply aggregation if requested
-    if operation != "raw":
-        data = _aggregate_data(data, operation, fields)
+    # Always apply aggregation processing (including for raw data to get metadata)
+    data = _aggregate_data(data, operation, fields)
     
     return jsonify(data)
 

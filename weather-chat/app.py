@@ -61,9 +61,16 @@ When asked about weather data, call **query_weather** with:
 • "What was the highest wind speed today?" → operation="max", fields=["wind_speed"]
 • "How bright was it yesterday?" → operation="max", fields=["luminance"]
 
+**Response format handling:**
+- Raw data (operation="raw"): Returns {"data": [...], "_metadata": {...}}
+- Aggregated data: Returns {field1: value1, field2: value2, "_metadata": {...}}
+- Always check for and use the "_metadata.units" section for accurate unit information
+- For raw data, iterate through the "data" array to extract readings
+- For aggregated data, use the direct field values in the response
+
 **Response format:**
-1. Extract the key information from the returned data
-2. Provide a clear, concise answer with appropriate units (°C, mm, hPa, m/s, %)
+1. Extract the key information from the returned data structure
+2. Use the units provided in "_metadata.units" for accurate unit information
 3. Round numbers to 1 decimal place when presenting to user
 4. If no data available, apologize briefly and suggest checking the time range
 
@@ -71,7 +78,8 @@ When asked about weather data, call **query_weather** with:
 - Always use the most appropriate operation for the user's question
 - Never reveal raw JSON, tool calls, or technical details to the user
 - Keep responses conversational and helpful
-- Include units in your responses (temperature in °C, rain in mm, etc.)
+- The response always includes a _metadata section with units - use these for accurate unit information
+- Handle both raw data format (with "data" array) and aggregated data format (direct values)
 """
 
 # ── Weather MCP tool implementation ───────────────────────────────────
