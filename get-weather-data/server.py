@@ -3,7 +3,6 @@ Enhanced MCP-compatible wrapper for get_weather_data() with aggregation support.
 """
 
 import json, re
-import pandas as pd
 from flask import Flask, request, jsonify
 from werkzeug.test import EnvironBuilder
 from flask import Request as FlaskRequest
@@ -11,6 +10,7 @@ from main import get_weather_data
 
 app = Flask(__name__)
 
+# ─── schema used for GET / ────────────────────────────────────────────
 ALL_FIELDS = [
     "timestamp_UTC", "temperature", "humidity", "pressure", "rain",
     "rain_rate", "luminance", "wind_speed", "wind_direction",
@@ -62,40 +62,98 @@ def _make_flask_request(body: dict) -> FlaskRequest:
     )
     return FlaskRequest(builder.get_environ())
 
+def _convert_units(value, field):
+    """Convert values to more readable units."""
+    if field == "rain_rate":
+        # Convert mm/s to mm/hr
+        return value * 3600
+    elif field == "wind_speed":
+        # Convert m/s to mph
+        return value * 2.23694
+    else:
+        return value
+
 def _aggregate_data(data, operation, fields):
-    """Apply aggregation operation to the data."""
+    """Apply aggregation operation to the data using pure Python."""
     if not data or operation == "raw":
+        # Apply unit conversions to raw data
+        if isinstance(data, list):
+            converted_data = []
+            for record in data:
+                converted_record = record.copy()
+                for field in ["rain_rate", "wind_speed"]:
+                    if field in converted_record and converted_record[field] is not None:
+                        try:
+                            converted_record[field] = round(_convert_units(float(converted_record[field]), field), 1)
+                        except (ValueError, TypeError):
+                            pass
+                converted_data.append(converted_record)
+            return converted_data
         return data
     
     try:
-        # Convert to DataFrame for easier aggregation
-        df = pd.DataFrame(data)
+        # Ensure data is a list of dictionaries
+        if not isinstance(data, list) or not data:
+            return {"error": "No data available for aggregation"}
         
-        # Filter to requested fields (excluding timestamp for aggregations)
-        numeric_fields = [f for f in fields if f != "timestamp_UTC" and f in df.columns]
+        # Filter to requested numeric fields (excluding timestamp)
+        numeric_fields = [f for f in fields if f != "timestamp_UTC"]
         
         if not numeric_fields:
             return {"error": "No numeric fields available for aggregation"}
         
+        # Extract values for each field with unit conversion
+        field_values = {}
+        for field in numeric_fields:
+            values = []
+            for record in data:
+                if field in record and record[field] is not None:
+                    try:
+                        raw_value = float(record[field])
+                        converted_value = _convert_units(raw_value, field)
+                        values.append(converted_value)
+                    except (ValueError, TypeError):
+                        continue
+            if values:
+                field_values[field] = values
+        
+        if not field_values:
+            return {"error": "No valid numeric data found"}
+        
         # Apply aggregation
+        result = {}
         if operation == "max":
-            result = df[numeric_fields].max().round(1).to_dict()
+            for field, values in field_values.items():
+                result[field] = round(max(values), 1)
         elif operation == "min":
-            result = df[numeric_fields].min().round(1).to_dict()
+            for field, values in field_values.items():
+                result[field] = round(min(values), 1)
         elif operation == "mean":
-            result = df[numeric_fields].mean().round(1).to_dict()
+            for field, values in field_values.items():
+                result[field] = round(sum(values) / len(values), 1)
         elif operation == "sum":
-            result = df[numeric_fields].sum().round(1).to_dict()
+            for field, values in field_values.items():
+                result[field] = round(sum(values), 1)
         elif operation == "count":
-            result = {"count": len(df)}
+            result = {"count": len(data)}
         else:
             return {"error": f"Unknown operation: {operation}"}
         
-        # Add metadata
+        # Add metadata with unit information
+        timestamps = [record.get('timestamp_UTC') for record in data if record.get('timestamp_UTC')]
         result["_metadata"] = {
             "operation": operation,
-            "record_count": len(df),
-            "time_range": f"{df['timestamp_UTC'].min()} to {df['timestamp_UTC'].max()}" if 'timestamp_UTC' in df.columns else "unknown"
+            "record_count": len(data),
+            "time_range": f"{min(timestamps)} to {max(timestamps)}" if timestamps else "unknown",
+            "units": {
+                "temperature": "°C",
+                "humidity": "%",
+                "pressure": "hPa",
+                "rain": "mm",
+                "rain_rate": "mm/hr",
+                "wind_speed": "mph",
+                "luminance": "lux"
+            }
         }
         
         return result
