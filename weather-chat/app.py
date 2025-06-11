@@ -16,7 +16,7 @@ from vertexai.preview.generative_models import (
 
 # ── Vertex AI init ────────────────────────────────────────────────────
 vertexai.init(project="weathercloud-460719", location="us-central1")
-MODEL_ID = "gemini-2.0-flash-lite-001"            # universally available
+MODEL_ID = "gemini-2.0-flash-lite-001"         # universally available
 # ---------------------------------------------------------------------
 
 # ── System prompt ─────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ When asked about weather data, call **query_weather** with:
 **Available operations:**
 • raw: Return all data points (default)
 • max: Maximum values (for "highest", "warmest", "maximum")
-• min: Minimum values (for "lowest", "coldest", "minimum") 
+• min: Minimum values (for "lowest", "coldest", "minimum")  
 • mean: Average values (for "average", "typical")
 • sum: Total values (for "total rainfall", "total")
 • count: Number of records
@@ -91,7 +91,7 @@ def query_weather(range_param: str = "latest", fields: list | None = None, opera
     payload = {
         "name": "queryWeather",
         "arguments": {
-            "range": range_param, 
+            "range": range_param,  
             "fields": fields,
             "operation": operation
         },
@@ -110,7 +110,7 @@ def query_weather(range_param: str = "latest", fields: list | None = None, opera
         if st.session_state.get("debug_mode", False):
             st.write("**DEBUG: Weather API Response:**")
             st.json(response_data)
-        
+            
         return json.dumps(response_data, indent=2)
     except Exception as exc:
         error_msg = f"Weather API Error: {str(exc)}"
@@ -151,8 +151,8 @@ weather_tool = Tool(function_declarations=[weather_function])
 
 # Load Gemini with the tool attached and system instruction
 model = GenerativeModel(
-    MODEL_ID, 
-    tools=[weather_tool], 
+    MODEL_ID,  
+    tools=[weather_tool],  
     system_instruction=SYSTEM_PROMPT
 )
 
@@ -235,14 +235,20 @@ if user_msg:
         for fc in calls:
             if fc.name == "query_weather":
                 rng = fc.args.get("range_param", "latest")
-                flds_raw = fc.args.get("fields", ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"])
-                op = fc.args.get("operation", "raw")
+                # Corrected: Ensure fields is a proper list, especially if it comes as a string representation
+                flds = fc.args.get("fields")
+                if isinstance(flds, str):
+                    # Attempt to safely parse the string as a list
+                    try:
+                        flds = json.loads(flds.replace("'", "\"")) # Replace single quotes with double for valid JSON
+                    except json.JSONDecodeError:
+                        flds = [flds] # Fallback if parsing fails, treat as single field
+                elif flds is None:
+                    flds = ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"] # Default if None
+                elif not isinstance(flds, list):
+                    flds = [flds] # Ensure it's a list if it's a single non-string item
                 
-                # Convert RepeatedComposite to regular Python list
-                if hasattr(flds_raw, '__iter__') and not isinstance(flds_raw, str):
-                    flds = list(flds_raw)
-                else:
-                    flds = flds_raw if isinstance(flds_raw, list) else [flds_raw]
+                op = fc.args.get("operation", "raw")
                 
                 if st.session_state.debug_mode:
                     st.write(f"**DEBUG: Calling weather API with range='{rng}', fields={flds}, operation='{op}'**")
