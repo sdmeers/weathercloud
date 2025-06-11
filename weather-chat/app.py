@@ -106,9 +106,10 @@ def query_weather(range_param: str = "latest", fields: list | None = None, opera
         r.raise_for_status()
         response_data = r.json()
         
-        # Debug logging (remove in production)
-        st.write("**DEBUG: Weather API Response:**")
-        st.json(response_data)
+        # Debug logging (can be toggled)
+        if st.session_state.get("debug_mode", False):
+            st.write("**DEBUG: Weather API Response:**")
+            st.json(response_data)
         
         return json.dumps(response_data, indent=2)
     except Exception as exc:
@@ -159,8 +160,22 @@ model = GenerativeModel(
 st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️")
 st.title("Weather-Station Chatbot 🌤️")
 
+# Add debug toggle
+if "debug_mode" not in st.session_state:
+    st.session_state.debug_mode = False
+
+with st.sidebar:
+    st.session_state.debug_mode = st.checkbox("Debug Mode", value=st.session_state.debug_mode)
+    if st.button("Clear Chat"):
+        st.session_state.messages = []
+        st.rerun()
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# Display chat history
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).markdown(msg["content"])
 
 # ── Chat loop ─────────────────────────────────────────────────────────
 user_msg = st.chat_input("Ask me about the weather…")
@@ -178,7 +193,9 @@ if user_msg:
     # First pass
     try:
         first = model.generate_content(convo)
-        st.write("**DEBUG: First response received**")
+        
+        if st.session_state.debug_mode:
+            st.write("**DEBUG: First response received**")
         
         # Check if response has function calls or text
         if first.candidates and first.candidates[0].content.parts:
@@ -186,13 +203,13 @@ if user_msg:
             text_parts = [p.text for p in parts if hasattr(p, 'text') and p.text]
             function_parts = [p.function_call for p in parts if hasattr(p, 'function_call') and p.function_call]
             
-            st.write(f"**DEBUG: Found {len(text_parts)} text parts and {len(function_parts)} function calls**")
-            
-            if text_parts:
-                st.write(f"**DEBUG: Text parts:** {text_parts}")
+            if st.session_state.debug_mode:
+                st.write(f"**DEBUG: Found {len(text_parts)} text parts and {len(function_parts)} function calls**")
+                if text_parts:
+                    st.write(f"**DEBUG: Text parts:** {text_parts}")
         
     except Exception as exc:
-        err = f"Error: {exc}"
+        err = f"Error generating response: {exc}"
         st.chat_message("assistant").markdown(err)
         st.session_state.messages.append({"role": "assistant", "content": err})
         st.stop()
@@ -201,18 +218,25 @@ if user_msg:
     calls = [p.function_call for p in first.candidates[0].content.parts
              if hasattr(p, 'function_call') and p.function_call]
     
-    st.write(f"**DEBUG: Found {len(calls)} tool calls**")
+    if st.session_state.debug_mode:
+        st.write(f"**DEBUG: Found {len(calls)} tool calls**")
 
     if calls:
         # fulfil call(s) then second pass
-        st.write("**DEBUG: Tool calls detected:**")
-        st.json([{"name": fc.name, "args": dict(fc.args)} for fc in calls])
+        if st.session_state.debug_mode:
+            st.write("**DEBUG: Tool calls detected:**")
+            st.json([{"name": fc.name, "args": dict(fc.args)} for fc in calls])
         
+        # Add the model's response with function calls to conversation
+        convo.append(Content(role="model", parts=first.candidates[0].content.parts))
+        
+        # Process each function call
+        function_responses = []
         for fc in calls:
             if fc.name == "query_weather":
                 rng = fc.args.get("range_param", "latest")
-                flds_raw = fc.args.get("fields", ["timestamp_UTC", "temperature",
-                                                  "humidity", "pressure", "wind_speed"])
+                flds_raw = fc.args.get("fields", ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"])
+                op = fc.args.get("operation", "raw")
                 
                 # Convert RepeatedComposite to regular Python list
                 if hasattr(flds_raw, '__iter__') and not isinstance(flds_raw, str):
@@ -220,41 +244,42 @@ if user_msg:
                 else:
                     flds = flds_raw if isinstance(flds_raw, list) else [flds_raw]
                 
-                st.write(f"**DEBUG: Calling weather API with range='{rng}', fields={flds}**")
-                data_json = query_weather(rng, flds)
-
-                # Find the original function call part from the first response
-                fc_part = None
-                for part in first.candidates[0].content.parts:
-                    if hasattr(part, 'function_call') and part.function_call and part.function_call.name == "query_weather":
-                        fc_part = part
-                        break
+                if st.session_state.debug_mode:
+                    st.write(f"**DEBUG: Calling weather API with range='{rng}', fields={flds}, operation='{op}'**")
                 
-                if fc_part:
-                    convo.extend([
-                        Content(role="model", parts=[fc_part]),
-                        Content(role="function", parts=[
-                            Part.from_function_response(
-                                name="query_weather",
-                                response={"content": data_json},
-                            )
-                        ]),
-                    ])
-                else:
-                    st.error("Could not find function call part")
-
+                data_json = query_weather(rng, flds, op)
+                
+                # Add function response to conversation
+                function_responses.append(
+                    Part.from_function_response(
+                        name="query_weather",
+                        response={"content": data_json},
+                    )
+                )
+        
+        # Add all function responses to conversation
+        if function_responses:
+            convo.append(Content(role="function", parts=function_responses))
+        
+        # Second pass with function results
         try:
             second = model.generate_content(convo)
-            assistant_reply = second.text
+            assistant_reply = second.text if second.text else "I couldn't process the weather data properly."
+            
+            if st.session_state.debug_mode:
+                st.write("**DEBUG: Second response generated successfully**")
+                
         except Exception as exc:
-            assistant_reply = f"Error: {exc}"
+            assistant_reply = f"Error processing weather data: {exc}"
+            if st.session_state.debug_mode:
+                st.write(f"**DEBUG: Error in second pass: {exc}")
     else:
         # No function calls, extract text from parts
         if first.candidates and first.candidates[0].content.parts:
             text_parts = [p.text for p in first.candidates[0].content.parts if hasattr(p, 'text') and p.text]
-            assistant_reply = ' '.join(text_parts) if text_parts else "No response generated."
+            assistant_reply = ' '.join(text_parts) if text_parts else "I need to check the weather data for you. Let me try again."
         else:
-            assistant_reply = "No response generated."
+            assistant_reply = "I couldn't generate a proper response. Please try asking about the weather again."
 
     # show & cache reply
     st.chat_message("assistant").markdown(assistant_reply)
