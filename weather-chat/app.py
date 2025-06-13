@@ -96,6 +96,27 @@ def get_system_prompt():
     • Wind speed questions → "wind_speed" field
     • Wind direction questions → "wind_direction" field
 
+    **For questions asking "when" or "which day" with superlatives:**
+    When users ask questions like:
+    • "When was the wettest day this month?"
+    • "Which day had the highest temperature?"
+    • "What date was the windiest day?"
+
+    Use operation="raw" instead of aggregation operations, then analyze the raw data to find:
+    1. The maximum/minimum value
+    2. The corresponding timestamp for that value
+
+    **Examples of "when/which day" queries:**
+    • "When was the wettest day this month?" → operation="raw", fields=["timestamp_UTC", "rain"], range_param="month=6"
+    • "Which day had the highest temperature this year?" → operation="raw", fields=["timestamp_UTC", "temperature"], range_param="year=2025"  
+    • "What date was the windiest day last week?" → operation="raw", fields=["timestamp_UTC", "wind_speed"], range_param="last7days"
+
+    **Response format for date-specific queries:**
+    1. Analyze the raw data to find the maximum/minimum value
+    2. Identify the timestamp when this occurred
+    3. Present both the value AND the date/time to the user
+    4. Format the date in a user-friendly way (e.g., "June 15th" or "Tuesday, June 15th")
+
     **Examples of operation selection (based on current date context):**
     • "What was the maximum temperature yesterday?" → operation="max", fields=["temperature"], range_param="yesterday"
     • "How much rain fell in January?" → operation="sum", fields=["rain"], range_param="month=1" (assumes current year {current_year})
@@ -226,18 +247,52 @@ model = GenerativeModel(
 st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️")
 st.title("Weather-Station Chatbot 🌤️")
 
-# Add debug toggle
+# Initialize session state variables
 if "debug_mode" not in st.session_state:
     st.session_state.debug_mode = False
 
-with st.sidebar:
-    st.session_state.debug_mode = st.checkbox("Debug Mode", value=st.session_state.debug_mode)
-    if st.button("Clear Chat"):
-        st.session_state.messages = []
-        st.rerun()
+if "auto_trim" not in st.session_state:
+    st.session_state.auto_trim = True
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# Enhanced sidebar with conversation management
+with st.sidebar:
+    st.session_state.debug_mode = st.checkbox("Debug Mode", value=st.session_state.debug_mode)
+    
+    # Show conversation length
+    msg_count = len(st.session_state.messages)
+    st.write(f"Messages in conversation: {msg_count}")
+    
+    # Warning if conversation is getting long
+    if msg_count > 15:
+        st.warning("⚠️ Long conversation detected. Consider clearing chat if responses become inaccurate.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Clear Chat"):
+            st.session_state.messages = []
+            st.rerun()
+    
+    with col2:
+        if st.button("Reset Context"):
+            # Keep only the last user message if there is one
+            if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+                last_user_msg = st.session_state.messages[-1]
+                st.session_state.messages = [last_user_msg]
+                st.success("Context reset - keeping last question")
+            else:
+                st.session_state.messages = []
+                st.success("Context cleared")
+            st.rerun()
+    
+    # Auto-trim toggle  
+    st.session_state.auto_trim = st.checkbox("Auto-trim long conversations", 
+                                           value=st.session_state.auto_trim)
+    
+    if st.session_state.auto_trim:
+        st.caption("Automatically keeps only recent messages to prevent context issues")
 
 # Display chat history
 for msg in st.session_state.messages:
@@ -249,6 +304,15 @@ if user_msg:
     # show user bubble & store
     st.chat_message("user").markdown(user_msg)
     st.session_state.messages.append({"role": "user", "content": user_msg})
+
+    # SOLUTION 1: Trim conversation history to prevent context buildup
+    if st.session_state.auto_trim:
+        MAX_CONVERSATION_TURNS = 6  # Keep last 6 exchanges (12 messages total)
+        if len(st.session_state.messages) > MAX_CONVERSATION_TURNS * 2:
+            # Keep the most recent messages
+            st.session_state.messages = st.session_state.messages[-(MAX_CONVERSATION_TURNS * 2):]
+            if st.session_state.debug_mode:
+                st.write("**DEBUG: Trimmed conversation history to prevent context buildup**")
 
     # build conversation: history only (no system role)
     convo: list[Content] = []
@@ -353,7 +417,7 @@ if user_msg:
                 
         except Exception as exc:
             assistant_reply = f"Error processing weather data: {exc}"
-            if st.session_state.debug_olde:
+            if st.session_state.debug_mode:
                 st.write(f"**DEBUG: Error in second pass: {exc}")
     else:
         # No function calls, extract text from parts
