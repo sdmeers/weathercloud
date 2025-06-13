@@ -17,8 +17,7 @@ from vertexai.preview.generative_models import (
 
 # ── Vertex AI init ────────────────────────────────────────────────────
 vertexai.init(project="weathercloud-460719", location="us-central1")
-MODEL_ID = "gemini-2.0-flash-lite-001"         # universally available
-# ---------------------------------------------------------------------
+MODEL_ID = "gemini-2.0-flash-lite-001"
 
 # ── System prompt ─────────────────────────────────────────────────────
 def get_system_prompt():
@@ -158,8 +157,6 @@ def get_system_prompt():
     - Pay special attention to year rollovers when dealing with "last month" in January or "next month" in December
     """
 
-# Usage in your main code:
-# Replace the static SYSTEM_PROMPT = "..." with:
 SYSTEM_PROMPT = get_system_prompt()
 
 # ── Weather MCP tool implementation ───────────────────────────────────
@@ -169,8 +166,7 @@ def query_weather(range_param: str = "latest", fields: list | None = None, opera
     if fields is None:
         fields_for_payload = ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"]
     elif not isinstance(fields, list):
-        # This handles cases where fields might be a RepeatedComposite or other non-list type
-        # that behaves like an iterable but isn't a native list for JSON serialization.
+        # Handle cases where fields might be a RepeatedComposite or other non-list type
         fields_for_payload = list(fields)
     else:
         fields_for_payload = fields
@@ -179,7 +175,7 @@ def query_weather(range_param: str = "latest", fields: list | None = None, opera
         "name": "queryWeather",
         "arguments": {
             "range": range_param,  
-            "fields": fields_for_payload, # Use the converted fields list here
+            "fields": fields_for_payload,
             "operation": operation
         },
     }
@@ -192,12 +188,6 @@ def query_weather(range_param: str = "latest", fields: list | None = None, opera
         )
         r.raise_for_status()
         response_data = r.json()
-        
-        # Debug logging (can be toggled)
-        if st.session_state.get("debug_mode", False):
-            st.write("**DEBUG: Weather API Response:**")
-            st.json(response_data)
-            
         return json.dumps(response_data, indent=2)
     except Exception as exc:
         error_msg = f"Weather API Error: {str(exc)}"
@@ -247,25 +237,15 @@ model = GenerativeModel(
 st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️")
 st.title("Weather-Station Chatbot 🌤️")
 
-# Initialize session state variables
-if "debug_mode" not in st.session_state:
-    st.session_state.debug_mode = False
-
-if "auto_trim" not in st.session_state:
-    st.session_state.auto_trim = True
-
+# Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Enhanced sidebar with conversation management
+# Sidebar with conversation management
 with st.sidebar:
-    st.session_state.debug_mode = st.checkbox("Debug Mode", value=st.session_state.debug_mode)
-    
-    # Show conversation length
     msg_count = len(st.session_state.messages)
     st.write(f"Messages in conversation: {msg_count}")
     
-    # Warning if conversation is getting long
     if msg_count > 15:
         st.warning("⚠️ Long conversation detected. Consider clearing chat if responses become inaccurate.")
     
@@ -286,13 +266,6 @@ with st.sidebar:
                 st.session_state.messages = []
                 st.success("Context cleared")
             st.rerun()
-    
-    # Auto-trim toggle  
-    st.session_state.auto_trim = st.checkbox("Auto-trim long conversations", 
-                                           value=st.session_state.auto_trim)
-    
-    if st.session_state.auto_trim:
-        st.caption("Automatically keeps only recent messages to prevent context issues")
 
 # Display chat history
 for msg in st.session_state.messages:
@@ -301,60 +274,27 @@ for msg in st.session_state.messages:
 # ── Chat loop ─────────────────────────────────────────────────────────
 user_msg = st.chat_input("Ask me about the weather…")
 if user_msg:
-    # show user bubble & store
+    # Show user message and store
     st.chat_message("user").markdown(user_msg)
     st.session_state.messages.append({"role": "user", "content": user_msg})
 
-    # SOLUTION 1: Trim conversation history to prevent context buildup
-    if st.session_state.auto_trim:
-        MAX_CONVERSATION_TURNS = 4  # Reduced to 4 turns to be more aggressive
-        if len(st.session_state.messages) > MAX_CONVERSATION_TURNS * 2:
-            if st.session_state.debug_mode:
-                st.write("**DEBUG: Trimmed conversation history to prevent context buildup**")
-                st.write(f"**DEBUG: Messages before trim: {len(st.session_state.messages)}**")
-            
-            # AGGRESSIVE FIX: When trimming is needed, start completely fresh
-            # Keep only the current user message
-            current_user_msg = st.session_state.messages[-1]  # This is the message we just added
-            st.session_state.messages = [current_user_msg]
-            
-            # Start completely fresh - no conversation history
-            convo: list[Content] = [Content(role="user", parts=[Part.from_text(user_msg)])]
-            if st.session_state.debug_mode:
-                st.write("**DEBUG: Starting completely fresh after aggressive trim**")
-        else:
-            # No trimming needed, build conversation normally
-            convo: list[Content] = []
-            for m in st.session_state.messages:
-                role = "user" if m["role"] == "user" else "model"
-                convo.append(Content(role=role, parts=[Part.from_text(m["content"])]))
+    # Trim conversation history to prevent context buildup
+    MAX_CONVERSATION_TURNS = 4
+    if len(st.session_state.messages) > MAX_CONVERSATION_TURNS * 2:
+        # Start fresh - keep only the current user message
+        current_user_msg = st.session_state.messages[-1]
+        st.session_state.messages = [current_user_msg]
+        convo: list[Content] = [Content(role="user", parts=[Part.from_text(user_msg)])]
     else:
-        # Auto-trim disabled, build conversation normally
+        # Build conversation normally
         convo: list[Content] = []
         for m in st.session_state.messages:
             role = "user" if m["role"] == "user" else "model"
             convo.append(Content(role=role, parts=[Part.from_text(m["content"])]))
 
-    # Conversation building is now handled in the trimming logic above
-
     # First pass
     try:
         first = model.generate_content(convo)
-        
-        if st.session_state.debug_mode:
-            st.write("**DEBUG: First response received**")
-        
-        # Check if response has function calls or text
-        if first.candidates and first.candidates[0].content.parts:
-            parts = first.candidates[0].content.parts
-            text_parts = [p.text for p in parts if hasattr(p, 'text') and p.text]
-            function_parts = [p.function_call for p in parts if hasattr(p, 'function_call') and p.function_call]
-            
-            if st.session_state.debug_mode:
-                st.write(f"**DEBUG: Found {len(text_parts)} text parts and {len(function_parts)} function calls**")
-                if text_parts:
-                    st.write(f"**DEBUG: Text parts:** {text_parts}")
-        
     except Exception as exc:
         err = f"Error generating response: {exc}"
         st.chat_message("assistant").markdown(err)
@@ -364,16 +304,8 @@ if user_msg:
     # Extract any tool calls
     calls = [p.function_call for p in first.candidates[0].content.parts
             if hasattr(p, 'function_call') and p.function_call]
-    
-    if st.session_state.debug_mode:
-        st.write(f"**DEBUG: Found {len(calls)} tool calls**")
 
     if calls:
-        # fulfil call(s) then second pass
-        if st.session_state.debug_mode:
-            st.write("**DEBUG: Tool calls detected:**")
-            st.json([{"name": fc.name, "args": dict(fc.args)} for fc in calls])
-        
         # Add the model's response with function calls to conversation
         convo.append(Content(role="model", parts=first.candidates[0].content.parts))
         
@@ -387,30 +319,22 @@ if user_msg:
                 # Retrieve fields from function call arguments
                 flds = fc.args.get("fields")
                 
-                # --- START OF CRITICAL CHANGE ---
-                # Ensure 'fields' is a proper Python list for JSON serialization.
-                # The Vertex AI SDK might return a RepeatedComposite object, which behaves like a list
-                # but needs explicit conversion for JSON.
+                # Ensure 'fields' is a proper Python list for JSON serialization
                 if flds is None:
-                    # If fields was not provided in the tool call, use the default from query_weather
                     flds_for_api = ["timestamp_UTC", "temperature", "humidity", "pressure", "wind_speed"]
                 elif hasattr(flds, '__iter__') and not isinstance(flds, (str, list)):
-                    # This covers RepeatedComposite and similar iterable non-list types
+                    # Handle RepeatedComposite and similar iterable non-list types
                     flds_for_api = list(flds)
                 elif isinstance(flds, str):
-                    # Handle cases where it might be a string representation of a list (less common for direct model output)
+                    # Handle string representation of a list
                     try:
                         flds_for_api = json.loads(flds.replace("'", "\""))
                     except json.JSONDecodeError:
-                        flds_for_api = [flds] # Fallback
+                        flds_for_api = [flds]
                 else:
-                    flds_for_api = flds # Already a list
-                # --- END OF CRITICAL CHANGE ---
+                    flds_for_api = flds
                 
-                if st.session_state.debug_mode:
-                    st.write(f"**DEBUG: Calling weather API with range='{rng}', fields={flds_for_api}, operation='{op}'**")
-                
-                data_json = query_weather(rng, flds_for_api, op) # Pass the properly converted list
+                data_json = query_weather(rng, flds_for_api, op)
                 
                 # Add function response to conversation
                 function_responses.append(
@@ -428,14 +352,8 @@ if user_msg:
         try:
             second = model.generate_content(convo)
             assistant_reply = second.text if second.text else "I couldn't process the weather data properly."
-            
-            if st.session_state.debug_mode:
-                st.write("**DEBUG: Second response generated successfully**")
-                
         except Exception as exc:
             assistant_reply = f"Error processing weather data: {exc}"
-            if st.session_state.debug_mode:
-                st.write(f"**DEBUG: Error in second pass: {exc}")
     else:
         # No function calls, extract text from parts
         if first.candidates and first.candidates[0].content.parts:
@@ -444,7 +362,7 @@ if user_msg:
         else:
             assistant_reply = "I couldn't generate a proper response. Please try asking about the weather again."
 
-    # show & cache reply
+    # Show and store reply
     st.chat_message("assistant").markdown(assistant_reply)
     st.session_state.messages.append(
         {"role": "assistant", "content": assistant_reply}
