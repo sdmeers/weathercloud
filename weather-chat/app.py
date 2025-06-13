@@ -237,18 +237,41 @@ model = GenerativeModel(
 st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️", initial_sidebar_state="collapsed")
 
 # Custom CSS for styling
+# Custom CSS for styling
 st.markdown("""
 <style>
-    /* Import W3.CSS framework */
-    @import url('https://www.w3schools.com/w3css/4/w3.css');
+    /* Import Font Awesome for icons */
+    @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
+    
+    /* Hide Streamlit's default header and footer */
+    header[data-testid="stHeader"] {
+        display: none;
+    }
+    
+    div[data-testid="stToolbar"] {
+        display: none;
+    }
+    
+    footer {
+        display: none;
+    }
+    
+    .stDeployButton {
+        display: none;
+    }
     
     /* Set white background */
     .stApp {
         background-color: white;
     }
     
-    /* Create top navigation bar */
-    .top-nav {
+    /* Make main title black */
+    .stApp h1 {
+        color: black !important;
+    }
+    
+    /* Create custom top navigation bar */
+    .custom-nav {
         position: fixed;
         top: 0;
         left: 0;
@@ -260,27 +283,27 @@ st.markdown("""
         align-items: center;
         justify-content: space-between;
         padding: 0 20px;
-        z-index: 999;
+        z-index: 9999;
         font-size: 16px;
     }
     
-    .top-nav a {
+    .custom-nav a {
         color: white;
         text-decoration: none;
     }
     
-    .top-nav a:hover {
+    .custom-nav a:hover {
         color: #ccc;
     }
     
-    /* Add top margin to main content to account for fixed nav */
-    .main > div {
-        padding-top: 60px;
+    /* Add top margin to main content */
+    .main .block-container {
+        padding-top: 70px;
     }
 </style>
 
-<div class="top-nav">
-    <span><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="https://weather-dashboard-728445650450.europe-west2.run.app/">Weather Dashboard</a></span>
+<div class="custom-nav">
+    <span><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="#">Weather Dashboard</a></span>
     <span><i class="fa-solid fa-database"></i> <a href="#">View data</a></span>
 </div>
 """, unsafe_allow_html=True)
