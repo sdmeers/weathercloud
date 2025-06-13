@@ -307,18 +307,35 @@ if user_msg:
 
     # SOLUTION 1: Trim conversation history to prevent context buildup
     if st.session_state.auto_trim:
-        MAX_CONVERSATION_TURNS = 6  # Keep last 6 exchanges (12 messages total)
+        MAX_CONVERSATION_TURNS = 4  # Reduced to 4 turns to be more aggressive
         if len(st.session_state.messages) > MAX_CONVERSATION_TURNS * 2:
-            # Keep the most recent messages
-            st.session_state.messages = st.session_state.messages[-(MAX_CONVERSATION_TURNS * 2):]
             if st.session_state.debug_mode:
                 st.write("**DEBUG: Trimmed conversation history to prevent context buildup**")
+                st.write(f"**DEBUG: Messages before trim: {len(st.session_state.messages)}**")
+            
+            # AGGRESSIVE FIX: When trimming is needed, start completely fresh
+            # Keep only the current user message
+            current_user_msg = st.session_state.messages[-1]  # This is the message we just added
+            st.session_state.messages = [current_user_msg]
+            
+            # Start completely fresh - no conversation history
+            convo: list[Content] = [Content(role="user", parts=[Part.from_text(user_msg)])]
+            if st.session_state.debug_mode:
+                st.write("**DEBUG: Starting completely fresh after aggressive trim**")
+        else:
+            # No trimming needed, build conversation normally
+            convo: list[Content] = []
+            for m in st.session_state.messages:
+                role = "user" if m["role"] == "user" else "model"
+                convo.append(Content(role=role, parts=[Part.from_text(m["content"])]))
+    else:
+        # Auto-trim disabled, build conversation normally
+        convo: list[Content] = []
+        for m in st.session_state.messages:
+            role = "user" if m["role"] == "user" else "model"
+            convo.append(Content(role=role, parts=[Part.from_text(m["content"])]))
 
-    # build conversation: history only (no system role)
-    convo: list[Content] = []
-    for m in st.session_state.messages:
-        role = "user" if m["role"] == "user" else "model"
-        convo.append(Content(role=role, parts=[Part.from_text(m["content"])]))
+    # Conversation building is now handled in the trimming logic above
 
     # First pass
     try:
