@@ -234,7 +234,57 @@ model = GenerativeModel(
 )
 
 # ── Streamlit UI ───────────────────────────────────────────────────────
-st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️")
+st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️", initial_sidebar_state="collapsed")
+
+# Custom CSS for styling
+st.markdown("""
+<style>
+    /* Import W3.CSS framework */
+    @import url('https://www.w3schools.com/w3css/4/w3.css');
+    
+    /* Set white background */
+    .stApp {
+        background-color: white;
+    }
+    
+    /* Create top navigation bar */
+    .top-nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 50px;
+        background-color: black;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        z-index: 999;
+        font-size: 16px;
+    }
+    
+    .top-nav a {
+        color: white;
+        text-decoration: none;
+    }
+    
+    .top-nav a:hover {
+        color: #ccc;
+    }
+    
+    /* Add top margin to main content to account for fixed nav */
+    .main > div {
+        padding-top: 60px;
+    }
+</style>
+
+<div class="top-nav">
+    <span><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="https://weather-dashboard-728445650450.europe-west2.run.app/">Weather Dashboard</a></span>
+    <span><i class="fa-solid fa-database"></i> <a href="#">View data</a></span>
+</div>
+""", unsafe_allow_html=True)
+
 st.title("Weather-Station Chatbot 🌤️")
 
 # Initialize session state
