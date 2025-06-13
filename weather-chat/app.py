@@ -237,41 +237,120 @@ model = GenerativeModel(
 st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️", initial_sidebar_state="collapsed")
 
 # Custom CSS for styling
-# Custom CSS for styling
+
+st.title("Weather-Station Chatbot 🌤️")
+
 st.markdown("""
 <style>
-    /* Import Font Awesome for icons */
-    @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
+    /* Import Font Awesome 6 (solid icons) and Raleway font to match your dashboard */
+    @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+    @import url('https://fonts.googleapis.com/css?family=Raleway');
     
-    /* Hide Streamlit's default header and footer */
+    /* Hide all Streamlit branding and default elements */
     header[data-testid="stHeader"] {
-        display: none;
+        display: none !important;
     }
     
     div[data-testid="stToolbar"] {
-        display: none;
+        display: none !important;
     }
     
     footer {
-        display: none;
+        display: none !important;
     }
     
     .stDeployButton {
-        display: none;
+        display: none !important;
     }
     
-    /* Set white background */
+    /* Hide the bottom status bar - multiple selectors to catch all variants */
+    .stStatus {
+        display: none !important;
+    }
+    
+    div[data-testid="stStatusWidget"] {
+        display: none !important;
+    }
+    
+    .stApp > div[data-testid="stStatusWidget"] {
+        display: none !important;
+    }
+    
+    /* Hide any remaining footer elements */
+    .stApp > footer {
+        display: none !important;
+    }
+    
+    /* Hide the "Made with Streamlit" footer */
+    .viewerBadge_link__1S137 {
+        display: none !important;
+    }
+    
+    /* Fix chat input container - make background white but keep it visible */
+    div[data-testid="stChatFloatingInputContainer"] {
+        background-color: white !important;
+        border-top: 1px solid #e0e0e0 !important;
+        padding: 10px 0 !important;
+    }
+    
+    /* Style the actual chat input */
+    .stChatInput > div {
+        background-color: white !important;
+        border: 1px solid #ddd !important;
+        border-radius: 8px !important;
+    }
+    
+    /* Remove the black bottom bar but keep chat input functional */
+    div[data-testid="stBottom"] {
+        background-color: white !important;
+    }
+    
+    /* Fix chat message styling - ensure black text on white background */
+    div[data-testid="stChatMessage"] {
+        background-color: white !important;
+        color: black !important;
+    }
+    
+    div[data-testid="stChatMessage"] p {
+        color: black !important;
+    }
+    
+    div[data-testid="stChatMessage"] * {
+        color: black !important;
+    }
+    
+    /* Ensure all chat content has proper styling */
+    .stChatMessage {
+        background-color: white !important;
+        color: black !important;
+    }
+    
+    /* Fix the entire chat input area to be completely white */
+    div[data-testid="stChatFloatingInputContainer"] > div {
+        background-color: white !important;
+    }
+    
+    /* Remove any remaining black backgrounds from bottom area */
+    div[data-testid="stChatFloatingInputContainer"] * {
+        background-color: white !important;
+    }
+    
+    /* Set white background and remove any bottom spacing */
     .stApp {
         background-color: white;
+        font-family: "Raleway", sans-serif;
+        padding-bottom: 0 !important;
+        margin-bottom: 0 !important;
     }
     
     /* Make main title black */
     .stApp h1 {
         color: black !important;
+        font-family: "Raleway", sans-serif;
     }
     
-    /* Create custom top navigation bar */
-    .custom-nav {
+    /* Create custom top navigation bar matching your dashboard */
+    .w3-bar {
         position: fixed;
         top: 0;
         left: 0;
@@ -282,35 +361,72 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 20px;
+        padding: 0 70px 0 20px;
         z-index: 9999;
+        font-size: 16px;
+        font-family: "Raleway", sans-serif;
+    }
+    
+    .w3-bar-item {
+        font-family: "Raleway", sans-serif;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .w3-bar-item i {
         font-size: 16px;
     }
     
-    .custom-nav a {
+    .w3-bar-item a {
         color: white;
         text-decoration: none;
+        font-family: "Raleway", sans-serif;
     }
     
-    .custom-nav a:hover {
+    .w3-bar-item a:hover {
         color: #ccc;
+    }
+    
+    .w3-left {
+        float: left;
+        margin-left: 30px;
+    }
+    
+    .w3-right {
+        float: right;
     }
     
     /* Add top margin to main content */
     .main .block-container {
         padding-top: 70px;
     }
+    
+    /* Ensure sidebar toggle button is properly positioned */
+    button[data-testid="collapsedControl"] {
+        position: fixed;
+        top: 10px !important;
+        left: 10px !important;
+        z-index: 10000;
+        background-color: rgba(255, 255, 255, 0.9) !important;
+        border: 1px solid #ddd !important;
+        color: black !important;
+        padding: 8px 12px;
+        border-radius: 4px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    button[data-testid="collapsedControl"]:hover {
+        background-color: rgba(255, 255, 255, 1) !important;
+    }
 </style>
 
-<div class="custom-nav">
-    <span><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="#">Weather Dashboard</a></span>
-    <span><i class="fa-solid fa-database"></i> <a href="#">View data</a></span>
+<div class="w3-bar w3-top w3-black w3-large">
+    <span class="w3-bar-item w3-left"><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="#">Weather Dashboard</a></span>
+    <span class="w3-bar-item w3-right"><i class="fa-solid fa-database"></i> <a href="#">View data</a></span>
 </div>
 """, unsafe_allow_html=True)
 
-st.title("Weather-Station Chatbot 🌤️")
-
-# Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
