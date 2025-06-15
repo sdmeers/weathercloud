@@ -350,36 +350,35 @@ st.markdown("""
         justify-content: center;
     }
 
-    /* The main input wrapper */
-    div[data-testid="stChatFloatingInputContainer"] > div {
-        display: flex;
-        align-items: center;
-        background-color: #f8f8f8 !important;
+    /* UNIVERSAL APPROACH - style ALL elements in the chat input area */
+    div[data-testid="stChatFloatingInputContainer"] *,
+    div[data-testid="stChatFloatingInputContainer"] * > *,
+    div[data-testid="stChatFloatingInputContainer"] * > * > * {
         border: 2px solid #000000 !important;
         border-radius: 25px !important;
-        padding: 8px 15px;
-        max-width: 700px;
-        width: 100%;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }
-
-    /* Input textarea */
-    div[data-testid="stChatFloatingInputContainer"] textarea {
-        background-color: transparent !important;
+        background-color: #f8f8f8 !important;
         color: #333333 !important;
-        border: none !important;
-        outline: none !important;
-        padding: 8px 12px !important;
-        font-size: 1rem !important;
-        width: 100%;
-        resize: none !important;
-        font-family: "Raleway", sans-serif !important;
     }
 
-    /* Input textarea placeholder */
-    div[data-testid="stChatFloatingInputContainer"] textarea::placeholder {
-        color: #888888 !important;
-        opacity: 0.8;
+    /* Specifically target any textarea */
+    textarea {
+        border: 2px solid #000000 !important;
+        border-radius: 25px !important;
+        background-color: #f8f8f8 !important;
+        color: #333333 !important;
+        padding: 12px 15px !important;
+        font-size: 1rem !important;
+        font-family: "Raleway", sans-serif !important;
+        outline: none !important;
+    }
+
+    /* Override for submit button - remove border */
+    button[data-testid="stChatInputSubmitButton"] {
+        border: none !important;
+        background-color: transparent !important;
+        border-radius: 50% !important;
+        padding: 8px !important;
+        margin-left: 8px !important;
     }
 
     /* Submit button styling */
@@ -403,8 +402,8 @@ st.markdown("""
     /* Submit button icon */
     button[data-testid="stChatInputSubmitButton"] svg {
         color: #333333 !important;
-        height: 1.2rem !important;
-        width: 1.2rem !important;
+        height: 1.5rem !important;
+        width: 1.5rem !important;
     }
 </style>
 
