@@ -397,8 +397,8 @@ st.markdown("""
 </style>
 
 <div class="w3-bar w3-top w3-black w3-large">
-    <span class="w3-bar-item w3-left"><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="https://weather-dashboard-728445650450.europe-west2.run.app/">Weather Dashboard</a></span>
-    <span class="w3-bar-item w3-right"><i class="fa-solid fa-database"></i> <a href="https://display-weather-data-728445650450.europe-west2.run.app/">View data</a></span>
+    <span class="w3-bar-item w3-left"><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="https://weather-dashboard-728445650450.europe-west2.run.app/" target="_self">Weather Dashboard</a></span>
+    <span class="w3-bar-item w3-right"><i class="fa-solid fa-database"></i> <a href="https://display-weather-data-728445650450.europe-west2.run.app/" target="_self">View data</a></span>
 </div>
 """, unsafe_allow_html=True)
 
