@@ -234,12 +234,9 @@ model = GenerativeModel(
 )
 
 # ── Streamlit UI ───────────────────────────────────────────────────────
-st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️")
 
 # Custom CSS for styling
-
-st.title("Weather-Station Chatbot 🌤️")
-
 st.markdown("""
 <style>
     @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
@@ -252,23 +249,25 @@ st.markdown("""
     .viewerBadge_link__1S137,
     .stStatus,
     div[data-testid="stStatusWidget"],
-    .stApp > footer {
+    .stApp > footer,
+    .stSidebar,
+    section[data-testid="stSidebar"] {
         display: none !important;
     }
 
-    /* Top nav bar */
+    /* Top nav bar - FORCE BLACK BACKGROUND */
     .w3-bar {
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         height: 50px;
-        background-color: black;
-        color: white;
+        background-color: black !important;
+        color: white !important;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 70px 0 20px;
+        padding: 0 20px;
         z-index: 9999;
         font-size: 16px;
         font-family: "Raleway", sans-serif;
@@ -278,132 +277,108 @@ st.markdown("""
         display: flex;
         align-items: center;
         gap: 8px;
+        color: white !important;
     }
 
     .w3-bar-item a {
-        color: white;
+        color: white !important;
         text-decoration: none;
     }
 
     .w3-bar-item a:hover {
-        color: #ccc;
+        color: #ccc !important;
     }
 
-    /* Sidebar toggle */
-    button[data-testid="collapsedControl"] {
-        position: fixed;
-        top: 10px;
-        left: 10px;
-        z-index: 10000;
-        background-color: rgba(255, 255, 255, 0.9) !important;
-        border: 1px solid #ddd !important;
-        color: black !important;
-        padding: 8px 12px;
-        border-radius: 4px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    .w3-bar-item i {
+        color: white !important;
     }
 
-    /* Main layout background and text */
-    .stApp,
-    .main,
-    .block-container,
-    html,
-    body,
-    section,
-    footer,
-    div[data-testid="stAppViewContainer"] {
+    /* FORCE WHITE BACKGROUND EVERYWHERE EXCEPT NAV */
+    html, body, .stApp, .main, div, section, 
+    div[data-testid="stAppViewContainer"],
+    div[data-testid="stMain"],
+    div[data-testid="stBottom"],
+    div[data-testid="stChatFloatingInputContainer"] {
         background-color: white !important;
         color: black !important;
-        font-family: "Raleway", sans-serif;
+        font-family: "Raleway", sans-serif !important;
     }
 
-    .main .block-container {
-        padding-top: 70px;
+    .block-container {
+        background-color: white !important;
+        color: black !important;
+        padding-top: 70px !important;
+        max-width: 800px;
+        margin: 0 auto;
     }
 
+    /* Title styling */
     .stApp h1 {
         color: black !important;
+        font-family: "Raleway", sans-serif !important;
+        text-align: center;
+        margin-bottom: 2rem;
     }
 
-    /* Chat messages (white background, black text) */
-    div[data-testid="stChatMessage"],
-    div[data-testid="stChatMessage"] * {
-        background-color: white !important;
-        color: black !important;
-    }
-
-    /* Chat footer background */
-    div[data-testid="stBottom"],
-    div[data-testid="stBottom"] * {
+    /* Chat messages */
+    div[data-testid="stChatMessage"] {
         background-color: white !important;
         color: black !important;
         border: none !important;
-        box-shadow: none !important;
+        margin-bottom: 1rem;
     }
 
-    /* Chat input container */
-    div[data-testid="stChatFloatingInputContainer"] {
-        margin: 0 auto;
-        padding: 0 20px 20px;
-        background-color: white !important;
-        display: flex;
-        justify-content: center;
+    div[data-testid="stChatMessage"] * {
+        background-color: transparent !important;
+        color: black !important;
     }
 
-    /* UNIVERSAL APPROACH - style ALL elements in the chat input area */
-    div[data-testid="stChatFloatingInputContainer"] *,
-    div[data-testid="stChatFloatingInputContainer"] * > *,
-    div[data-testid="stChatFloatingInputContainer"] * > * > * {
-        border: 2px solid #000000 !important;
+    /* SIMPLE CHAT INPUT STYLING */
+    div[data-testid="stChatInput"] {
+        background-color: #f8f9fa !important;
+        border: 2px solid #dee2e6 !important;
         border-radius: 25px !important;
-        background-color: #f8f8f8 !important;
-        color: #333333 !important;
+        max-width: 600px !important;
+        margin: 0 auto !important;
     }
 
-    /* Specifically target any textarea */
-    textarea {
-        border: 2px solid #000000 !important;
-        border-radius: 25px !important;
-        background-color: #f8f8f8 !important;
-        color: #333333 !important;
-        padding: 12px 15px !important;
-        font-size: 1rem !important;
+    div[data-testid="stChatInput"] textarea {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        border: none !important;
+        padding: 15px 20px !important;
+        font-size: 16px !important;
         font-family: "Raleway", sans-serif !important;
         outline: none !important;
+        border-radius: 23px !important;
     }
 
-    /* Override for submit button - remove border */
-    button[data-testid="stChatInputSubmitButton"] {
-        border: none !important;
-        background-color: transparent !important;
-        border-radius: 50% !important;
-        padding: 8px !important;
-        margin-left: 8px !important;
+    div[data-testid="stChatInput"] textarea::placeholder {
+        color: #6c757d !important;
     }
 
-    /* Submit button styling */
+    /* FIXED SEND BUTTON SIZING */
     button[data-testid="stChatInputSubmitButton"] {
-        background-color: transparent !important;
+        background-color: #007bff !important;
         border: none !important;
         border-radius: 50% !important;
-        padding: 8px !important;
-        margin-left: 8px !important;
+        width: 35px !important;
+        height: 35px !important;
+        margin: 6px !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        cursor: pointer !important;
-        transition: background-color 0.2s ease !important;
     }
 
-    button[data-testid="stChatInputSubmitButton"]:hover {
-        background-color: rgba(255, 255, 255, 0.1) !important;
-    }
-
-    /* Submit button icon */
     button[data-testid="stChatInputSubmitButton"] svg {
-        color: #333333 !important;
-        height: 1.5rem !important;
-        width: 1.5rem !important;
+        color: white !important;
+        width: 16px !important;
+        height: 16px !important;
+    }
+
+    /* Ensure all text is visible */
+    .stMarkdown, .stText, p, div, span {
+        color: black !important;
     }
 </style>
 
@@ -413,34 +388,11 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+st.title("Weather-Station Chatbot 🌤️")
+
+# Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-# Sidebar with conversation management
-with st.sidebar:
-    msg_count = len(st.session_state.messages)
-    st.write(f"Messages in conversation: {msg_count}")
-    
-    if msg_count > 15:
-        st.warning("⚠️ Long conversation detected. Consider clearing chat if responses become inaccurate.")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Clear Chat"):
-            st.session_state.messages = []
-            st.rerun()
-    
-    with col2:
-        if st.button("Reset Context"):
-            # Keep only the last user message if there is one
-            if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-                last_user_msg = st.session_state.messages[-1]
-                st.session_state.messages = [last_user_msg]
-                st.success("Context reset - keeping last question")
-            else:
-                st.session_state.messages = []
-                st.success("Context cleared")
-            st.rerun()
 
 # Display chat history
 for msg in st.session_state.messages:
@@ -541,4 +493,4 @@ if user_msg:
     st.chat_message("assistant").markdown(assistant_reply)
     st.session_state.messages.append(
         {"role": "assistant", "content": assistant_reply}
-    )
+    )   
