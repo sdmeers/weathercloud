@@ -340,21 +340,34 @@ st.markdown("""
         border-radius: 25px !important;
         max-width: 600px !important;
         margin: 0 auto !important;
+        padding: 0 !important;
+        display: flex !important;
+        align-items: center !important;
     }
 
-    div[data-testid="stChatInput"] textarea {
+    div[data-testid="stChatInput"] {
         background-color: #f8f9fa !important;
-        color: #212529 !important;
-        border: none !important;
-        padding: 15px 20px !important;
-        font-size: 16px !important;
-        font-family: "Raleway", sans-serif !important;
-        outline: none !important;
-        border-radius: 23px !important;
+        border: 2px solid #dee2e6 !important;
+        border-radius: 25px !important;
+        max-width: 600px !important;
+        margin: 0 auto !important;
+        padding: 3px !important;                  /* Small padding instead of 0 */
+        display: flex !important;
+        align-items: center !important;
+        overflow: hidden !important;              /* Ensures no overflow */
     }
 
     div[data-testid="stChatInput"] textarea::placeholder {
         color: #6c757d !important;
+    }
+            
+    div[data-testid="stChatInput"] textarea {
+    color: #212529 !important;
+        caret-color: #212529 !important;          /* Ensures cursor is visible too */
+    }
+
+    div[data-testid="stChatInput"] textarea:focus {
+        color: #212529 !important;
     }
 
     /* FIXED SEND BUTTON SIZING */
@@ -362,12 +375,13 @@ st.markdown("""
         background-color: #007bff !important;
         border: none !important;
         border-radius: 50% !important;
-        width: 35px !important;
-        height: 35px !important;
-        margin: 6px !important;
+        width: 30px !important;                   /* Smaller button */
+        height: 30px !important;                  /* Smaller button */
+        margin: 5px 8px !important;               /* Reduce margins */
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+        flex-shrink: 0 !important;
     }
 
     button[data-testid="stChatInputSubmitButton"] svg {
@@ -383,8 +397,8 @@ st.markdown("""
 </style>
 
 <div class="w3-bar w3-top w3-black w3-large">
-    <span class="w3-bar-item w3-left"><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="#">Weather Dashboard</a></span>
-    <span class="w3-bar-item w3-right"><i class="fa-solid fa-database"></i> <a href="#">View data</a></span>
+    <span class="w3-bar-item w3-left"><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="https://weather-dashboard-728445650450.europe-west2.run.app/">Weather Dashboard</a></span>
+    <span class="w3-bar-item w3-right"><i class="fa-solid fa-database"></i> <a href="https://display-weather-data-728445650450.europe-west2.run.app/">View data</a></span>
 </div>
 """, unsafe_allow_html=True)
 
