@@ -214,8 +214,8 @@ def display_weather_data(request):
 
         <!-- Top container -->
         <div class="w3-bar w3-top w3-black w3-large" style="z-index:4; border-radius: 0 0 8px 8px;">
-            <span class="w3-bar-item w3-left"><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="{dashboard_URL}">Weather Dashboard</a></span>
-            <span class="w3-bar-item w3-right"><i class="fa-solid fa-comments"></i> <a href="{chat_URL}">Chat</a></span>
+            <span class="w3-bar-item w3-left"><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="{dashboard_URL}">Weather Summary</a></span>
+            <span class="w3-bar-item w3-right"><i class="fa-solid fa-comments"></i> <a href="{chat_URL}">Weather Chat</a></span>
         </div>
 
         <div class="w3-container w3-margin-top container">
