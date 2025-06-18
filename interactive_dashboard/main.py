@@ -172,8 +172,8 @@ app.index_string = '''
 </head>
 <body>
     <div class="navbar-custom">
-        <a href="#"><i class="fa fa-dashboard"></i> Weather Dashboard (GCP)</a>
-        <a href="#"><i class="fa-solid fa-database"></i> Cloud Data</a>
+        <a href="https://weather-dashboard-728445650450.europe-west2.run.app/"><i class="fa fa-dashboard"></i>Weather Summary</a>
+        <a href="https://display-weather-data-728445650450.europe-west2.run.app/"><i class="fa-solid fa-database"></i>Weather Data</a>
     </div>
     <div id="react-entry-point" style="padding-top: 50px;">
         {%app_entry%}
@@ -699,6 +699,9 @@ def update_graphs_and_table(btn_today, btn_week, btn_month, btn_year, btn_all, s
     }).to_dict('records')
 
     return start_date.date() if hasattr(start_date, 'date') else start_date, end_date, temp_bar_fig, total_rainfall_bar_fig, radar_fig, basic_statistics_data, time_series_fig, boxplot_fig, statistics_data, histogram_kde_fig
+
+server = app.server      # expose Flask app
+application = app.  server     # default Gunicorn target
 
 # Run the app
 if __name__ == '__main__':
