@@ -116,12 +116,13 @@ app.index_string = '''
     <title>Weather Dashboard</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
     <script src="https://kit.fontawesome.com/e1d7788428.js" crossorigin="anonymous"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         html, body {
-            font-family: 'Raleway', sans-serif;
+            font-family: 'Roboto', sans-serif;
             font-size: 15px;
             line-height: 1.5;
             overflow-x: hidden;
@@ -143,7 +144,7 @@ app.index_string = '''
         .navbar-custom a {
             text-decoration: none;
             color: white !important;
-            font-family: 'Raleway', sans-serif;
+            font-family: 'Roboto', sans-serif;
             font-size: 18px;
             font-weight: 400;
             display: flex;
@@ -152,7 +153,9 @@ app.index_string = '''
         .navbar-custom i {
             margin-right: 5px;
         }
-        
+        .common_navbar a:hover {
+            color: #ccc !important;
+        }
         .center-table {
             margin-left: auto;
             margin-right: auto;
@@ -173,7 +176,7 @@ app.index_string = '''
 <body>
     <div class="navbar-custom">
         <a href="https://weather-dashboard-728445650450.europe-west2.run.app/"><i class="fa fa-dashboard"></i>Weather Summary</a>
-        <a href="https://display-weather-data-728445650450.europe-west2.run.app/"><i class="fa-solid fa-database"></i>Weather Data</a>
+        <a href="https://display-weather-data-728445650450.europe-west2.run.app/"><i class="fa-solid fa-database"></i>View Data</a>
     </div>
     <div id="react-entry-point" style="padding-top: 50px;">
         {%app_entry%}
