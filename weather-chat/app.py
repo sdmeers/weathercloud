@@ -414,8 +414,8 @@ st.markdown("""
 </style>
 
 <div class="common_navbar">
-  <a href="https://weather-dashboard-728445650450.europe-west2.run.app/"><i class="fa-solid fa-magnifying-glass-chart"></i>Weather Summary</a>
-  <a href="https://display-weather-data-728445650450.europe-west2.run.app/"><i class="fa-solid fa-comments"></i>View Data</a>
+  <a href="https://weather-dashboard-728445650450.europe-west2.run.app/"><i class="fa-solid fa-dashboard"></i>Weather Summary</a>
+  <a href="https://display-weather-data-728445650450.europe-west2.run.app/"><i class="fa-solid fa-database"></i>View Data</a>
 </div>
  
 """, unsafe_allow_html=True)
