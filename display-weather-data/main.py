@@ -184,73 +184,180 @@ def display_weather_data(request):
     chat_URL = os.environ.get('CHAT_URL', '/chat') 
 
     html_content = f"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Raspberry Pi Weather Log</title>
-        <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-        <script src="https://kit.fontawesome.com/e1d7788428.js" crossorigin="anonymous"></script>
-        <style>
-            body {{ background-color: white; font-family: "Inter", sans-serif; }}
-            .w3-top {{ position: sticky; top: 0; width: 100%; }}
-            .w3-bar-item a {{ text-decoration: none; color: inherit; }}
-            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; border-radius: 8px; overflow: hidden; }}
-            th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-            th {{ background-color: #f2f2f2; font-weight: bold; }}
-            tr:nth-child(even) {{ background-color: #f9f9f9; }}
-            tr:hover {{ background-color: #f1f1f1; }}
-            .container {{ margin-top: 60px; padding: 20px; }}
-            h1 {{ margin-bottom: 20px; color: #333; display: inline-block; vertical-align: middle; }}
-            .pagination-top {{ margin-left: 20px; display: inline-block; vertical-align: middle; }}
-            .pagination-bottom {{ margin-top: 20px; text-align: center; display: flex; justify-content: center; gap: 10px; }}
-            .w3-button {{ border-radius: 8px; padding: 10px 20px; transition: background-color 0.3s ease; }}
-            .w3-button:hover {{ background-color: #555 !important; }}
-        </style>
-    </head>
-    <body class="w3-white">
-
-        <!-- Top container -->
-        <div class="w3-bar w3-top w3-black w3-large" style="z-index:4; border-radius: 0 0 8px 8px;">
-            <span class="w3-bar-item w3-left"><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="{dashboard_URL}">Weather Summary</a></span>
-            <span class="w3-bar-item w3-right"><i class="fa-solid fa-comments"></i> <a href="{chat_URL}">Weather Chat</a></span>
-        </div>
-
-        <div class="w3-container w3-margin-top container">
-            <h1>Raspberry Pi Weather Log</h1>
-            <div class="pagination-top">
-                {pagination_links}
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Raspberry Pi Weather Log</title>
+            <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+            <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+            <script src="https://kit.fontawesome.com/e1d7788428.js" crossorigin="anonymous"></script>
+            <style>
+                html, body {{
+                    font-family: 'Roboto', sans-serif;
+                    font-size: 15px;
+                    line-height: 1.5;
+                    overflow-x: hidden;
+                    background-color: white;
+                    padding-top: 60px; /* Account for fixed navbar */
+                }}
+                
+                .common_navbar {{
+                    width: 100%;
+                    overflow: hidden;
+                    background-color: black;
+                    color: white;
+                    padding: 8px 16px;
+                    z-index: 4;
+                    position: fixed;
+                    top: 0;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    height: 44px;
+                }}
+                
+                .common_navbar a {{
+                    text-decoration: none;
+                    color: white !important;
+                    font-family: 'Roboto', sans-serif;
+                    font-size: 18px;
+                    font-weight: 400;
+                    display: flex;
+                    align-items: center;
+                }}
+                
+                .common_navbar a:hover {{
+                    color: #ccc !important;
+                }}
+                
+                .common_navbar i {{
+                    margin-right: 5px;
+                }}
+                
+                table {{ 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    margin-top: 20px; 
+                    border-radius: 8px; 
+                    overflow: hidden; 
+                }}
+                
+                th, td {{ 
+                    border: 1px solid #ddd; 
+                    padding: 12px; 
+                    text-align: left; 
+                }}
+                
+                th {{ 
+                    background-color: #f2f2f2; 
+                    font-weight: bold; 
+                }}
+                
+                tr:nth-child(even) {{ 
+                    background-color: #f9f9f9; 
+                }}
+                
+                tr:hover {{ 
+                    background-color: #f1f1f1; 
+                }}
+                
+                .container {{ 
+                    margin-top: 20px; 
+                    padding: 20px; 
+                }}
+                
+                h1 {{ 
+                    margin-bottom: 20px; 
+                    color: #333; 
+                    display: inline-block; 
+                    vertical-align: middle; 
+                }}
+                
+                .pagination-top {{ 
+                    margin-left: 20px; 
+                    display: inline-block; 
+                    vertical-align: middle; 
+                }}
+                
+                .pagination-bottom {{ 
+                    margin-top: 20px; 
+                    text-align: center; 
+                    display: flex; 
+                    justify-content: center; 
+                    gap: 10px; 
+                }}
+                
+                .w3-button {{ 
+                    border-radius: 8px; 
+                    padding: 10px 20px; 
+                    transition: background-color 0.3s ease; 
+                }}
+                
+                .w3-button:hover {{ 
+                    background-color: #555 !important; 
+                }}
+                
+                .dash-spinner, 
+                ._dash-loading-spinner, 
+                .dash-loading, 
+                .dash-spinner-container, 
+                .dash-spinner__svg, 
+                .dash-debug-menu, 
+                .dash-debug-menu--closed, 
+                .dash-debug-menu__outer {{
+                    display: none !important;
+                }}
+            </style>
+        </head>
+        <body>
+            <!-- Fixed navbar using common_navbar class -->
+            <div class="common_navbar">
+                <div>
+                    <i class="fa-solid fa-dashboard"></i> 
+                    <a href="{dashboard_URL}">Weather Summary</a>
+                </div>
+                <div>
+                    <i class="fa-solid fa-comments"></i> 
+                    <a href="{chat_URL}">Chatbot</a>
+                </div>
             </div>
 
-            <div class="w3-responsive w3-card-4" style="border-radius: 8px;">
-                <table class="w3-table w3-striped w3-bordered">
-                    <thead>
-                        <tr>
-                            <th>Timestamp (local)</th>
-                            <th>Temperature (C)</th>
-                            <th>Pressure (hPa)</th>
-                            <th>Humidity (%)</th>
-                            <th>Rain (mm)</th>
-                            <th>Rain rate (mm/hr)</th> <!-- Updated label -->
-                            <th>Luminance (lux)</th>
-                            <th>Wind Speed (mph)</th> <!-- Updated label -->
-                            <th>Wind Direction</th> <!-- Updated label -->
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {"".join(weather_data_rows)}
-                    </tbody>
-                </table>
-            </div>
+            <div class="w3-container container">
+                <h1>Raspberry Pi Weather Log</h1>
+                <div class="pagination-top">
+                    {pagination_links}
+                </div>
 
-            <div class="pagination-bottom">
-                {pagination_links}
-            </div>
-        </div>
+                <div class="w3-responsive w3-card-4" style="border-radius: 8px;">
+                    <table class="w3-table w3-striped w3-bordered">
+                        <thead>
+                            <tr>
+                                <th>Timestamp (local)</th>
+                                <th>Temperature (C)</th>
+                                <th>Pressure (hPa)</th>
+                                <th>Humidity (%)</th>
+                                <th>Rain (mm)</th>
+                                <th>Rain rate (mm/hr)</th>
+                                <th>Luminance (lux)</th>
+                                <th>Wind Speed (mph)</th>
+                                <th>Wind Direction</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {"".join(weather_data_rows)}
+                        </tbody>
+                    </table>
+                </div>
 
-    </body>
-    </html>
-    """
+                <div class="pagination-bottom">
+                    {pagination_links}
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
     return html_content, 200, {'Content-Type': 'text/html'}
