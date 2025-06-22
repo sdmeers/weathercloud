@@ -240,7 +240,56 @@ st.set_page_config(page_title="Weather-Station Chatbot", page_icon="🌤️")
 st.markdown("""
 <style>
     @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
-    @import url('https://fonts.googleapis.com/css?family=Raleway');
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+ 
+    html, body {
+        font-family: 'Roboto', sans-serif;
+        font-size: 15px;
+        line-height: 1.5;
+        overflow-x: hidden;
+    }
+    
+    /* Common navbar styles - MUST come before the general overrides */
+    .common_navbar {
+        width: 100vw !important;
+        overflow: hidden;
+        background-color: black !important;
+        color: white !important;
+        padding: 8px 16px;
+        z-index: 9999 !important;
+        position: fixed;
+        top: 0;
+        left: 0 !important;
+        right: 0 !important;
+        margin: 0 !important;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        height: 44px;
+        box-sizing: border-box;
+    }
+    .common_navbar a {
+        text-decoration: none;
+        color: white !important;
+        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif !important;
+        font-size: 18px;
+        font-weight: 400;
+        display: flex;
+        align-items: center;
+    }
+    .common_navbar a:hover {
+        color: #ccc !important;
+    }
+    .common_navbar i {
+        margin-right: 5px;
+        color: white !important;
+    }
+    
+    .center-table {
+        margin-left: auto;
+        margin-right: auto;
+        width: 50%;
+    }
 
     /* Hide default Streamlit UI elements */
     header[data-testid="stHeader"],
@@ -255,53 +304,21 @@ st.markdown("""
         display: none !important;
     }
 
-    /* Top nav bar - FORCE BLACK BACKGROUND */
-    .w3-bar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 50px;
-        background-color: black !important;
-        color: white !important;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 20px;
-        z-index: 9999;
-        font-size: 16px;
-        font-family: "Raleway", sans-serif;
-    }
-
-    .w3-bar-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: white !important;
-    }
-
-    .w3-bar-item a {
-        color: white !important;
-        text-decoration: none;
-    }
-
-    .w3-bar-item a:hover {
-        color: #ccc !important;
-    }
-
-    .w3-bar-item i {
-        color: white !important;
-    }
-
     /* FORCE WHITE BACKGROUND EVERYWHERE EXCEPT NAV */
-    html, body, .stApp, .main, div, section, 
+    html, body, .stApp, .main, section, 
     div[data-testid="stAppViewContainer"],
     div[data-testid="stMain"],
     div[data-testid="stBottom"],
     div[data-testid="stChatFloatingInputContainer"] {
         background-color: white !important;
         color: black !important;
-        font-family: "Raleway", sans-serif !important;
+        font-family: "Roboto", sans-serif !important;
+    }
+    
+    /* Apply white background to divs but exclude navbar */
+    div:not(.common_navbar) {
+        background-color: white !important;
+        color: black !important;
     }
 
     .block-container {
@@ -315,7 +332,7 @@ st.markdown("""
     /* Title styling */
     .stApp h1 {
         color: black !important;
-        font-family: "Raleway", sans-serif !important;
+        font-family: "Roboto", sans-serif !important;
         text-align: center;
         margin-bottom: 2rem;
     }
@@ -390,16 +407,17 @@ st.markdown("""
         height: 16px !important;
     }
 
-    /* Ensure all text is visible */
-    .stMarkdown, .stText, p, div, span {
+    /* Ensure all text is visible - but exclude navbar */
+    .stMarkdown:not(.common_navbar), .stText, p:not(.common_navbar p), span:not(.common_navbar span) {
         color: black !important;
     }
 </style>
 
-<div class="w3-bar w3-top w3-black w3-large">
-    <span class="w3-bar-item w3-left"><i class="fa-solid fa-magnifying-glass-chart"></i> <a href="https://weather-dashboard-728445650450.europe-west2.run.app/" target="_self">Weather Summary</a></span>
-    <span class="w3-bar-item w3-right"><i class="fa-solid fa-database"></i> <a href="https://display-weather-data-728445650450.europe-west2.run.app/" target="_self">Weather data</a></span>
+<div class="common_navbar">
+  <a href="https://weather-dashboard-728445650450.europe-west2.run.app/"><i class="fa-solid fa-magnifying-glass-chart"></i>Weather Summary</a>
+  <a href="https://display-weather-data-728445650450.europe-west2.run.app/"><i class="fa-solid fa-comments"></i>View Data</a>
 </div>
+ 
 """, unsafe_allow_html=True)
 
 st.title("Weather-Station Chatbot 🌤️")
