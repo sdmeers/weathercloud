@@ -313,16 +313,9 @@ def display_weather_data(request):
             </style>
         </head>
         <body>
-            <!-- Fixed navbar using common_navbar class -->
             <div class="common_navbar">
-                <div>
-                    <i class="fa-solid fa-dashboard"></i> 
-                    <a href="{dashboard_URL}">Weather Summary</a>
-                </div>
-                <div>
-                    <i class="fa-solid fa-comments"></i> 
-                    <a href="{chat_URL}">Chatbot</a>
-                </div>
+                <a href="{dashboard_URL}"><i class="fa-solid fa-dashboard"></i>Interactive Dashboard</a>
+                <a href="{chat_URL}"><i class="fa-solid fa-comments"></i>Chatbot</a>
             </div>
 
             <div class="w3-container container">
