@@ -1,0 +1,48 @@
+html, body {
+    font-family: 'Raleway', sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    overflow-x: hidden;
+}
+.common_navbar {
+    width: 100%;
+    overflow: hidden;
+    background-color: black;
+    color: white;
+    padding: 8px 16px;
+    z-index: 4;
+    position: fixed;
+    top: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 44px;
+}
+.common_navbar a {
+    text-decoration: none;
+    color: white !important;
+    font-family: 'Raleway', sans-serif;
+    font-size: 18px;
+    font-weight: 400;
+    display: flex;
+    align-items: center;
+}
+.common_navbar i {
+    margin-right: 5px;
+}
+
+.center-table {
+    margin-left: auto;
+    margin-right: auto;
+    width: 50%;
+}
+.dash-spinner, 
+._dash-loading-spinner, 
+.dash-loading, 
+.dash-spinner-container, 
+.dash-spinner__svg, 
+.dash-debug-menu, 
+.dash-debug-menu--closed, 
+.dash-debug-menu__outer {
+    display: none !important;
+}
