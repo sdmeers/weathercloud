@@ -10,7 +10,8 @@ import os
 import json
 
 # Configuration - Update this with your Cloud Function URL after deployment
-CLOUD_FUNCTION_URL = "https://europe-west2-weathercloud-460719.cloudfunctions.net/weather-image-classifier"
+#CLOUD_FUNCTION_URL = "https://europe-west2-weathercloud-460719.cloudfunctions.net/weather-image-classifier"
+CLOUD_FUNCTION_URL = "https://us-central1-weathercloud-460719.cloudfunctions.net/weather-image-classifier"
 
 def test_image_upload(image_path):
     """Upload a test image to the Cloud Function."""
