@@ -1,5 +1,4 @@
-html, body {
-    font-family: 'Roboto', sans-serif;
+body {
     font-size: 15px;
     line-height: 1.5;
     overflow-x: hidden;
@@ -17,6 +16,8 @@ html, body {
     justify-content: space-between;
     align-items: center;
     height: 44px;
+    font-family: 'Roboto', sans-serif;
+
 }
 .common_navbar a {
     text-decoration: none;
