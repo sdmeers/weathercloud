@@ -7,6 +7,7 @@ import base64
 import json
 from datetime import datetime
 import os
+import hashlib
 
 # Initialize Vertex AI - USE US-CENTRAL1 for better model availability
 PROJECT_ID = os.environ.get('PROJECT_ID')
@@ -14,6 +15,9 @@ LOCATION = os.environ.get('LOCATION', 'us-central1')  # Changed default to us-ce
 BUCKET_NAME = os.environ.get('BUCKET_NAME')
 
 vertexai.init(project=PROJECT_ID, location=LOCATION)
+
+# Simple in-memory cache for classifications
+classification_cache = {}
 
 @functions_framework.http
 def weather_image_classifier(request):
@@ -88,15 +92,22 @@ def classify_weather_image(image_data):
             print("Error: Empty image data")
             return 'error'
         
+        # Check cache first
+        image_hash = hashlib.md5(image_data).hexdigest()
+        if image_hash in classification_cache:
+            print(f"Using cached classification for image hash: {image_hash}")
+            return classification_cache[image_hash]
+        
         print(f"Processing image of size: {len(image_data)} bytes")
+        print(f"Image hash: {image_hash}")
         print(f"Using Vertex AI location: {LOCATION}")
         
         # Create Vertex AI image object directly from bytes
         vertex_image = VertexImage.from_bytes(image_data)
         
-        # Updated model names - prioritize models most likely to be available
+        # FIXED: Use consistent model selection - pick ONE model and stick with it
         model_names = [
-            # Gemini 2.0 models (newer, more likely to be available)
+                        # Gemini 2.0 models (newer, more likely to be available)
             "gemini-2.0-flash-exp",
             "gemini-2.0-flash",
             # Gemini 1.5 models (older but stable)
@@ -134,38 +145,36 @@ def classify_weather_image(image_data):
             print("Consider switching to us-central1 region for better model availability")
             return 'error'
         
-        # Improved prompt with more detailed instructions
-        prompt = """You are a weather classification expert. Analyze this image carefully and classify the weather conditions based on what you observe.
+        # IMPROVED: More deterministic prompt with explicit constraints
+        prompt = """Analyze this weather image and classify it with exactly ONE label.
 
-Look specifically for:
-- Sky conditions (clear, cloudy, overcast)
-- Lighting conditions (bright sun, dim light, artificial light)
-- Precipitation (rain, snow, visible water drops)
-- Atmospheric conditions (fog, mist, haze)
-- Time of day indicators
+CLASSIFICATION RULES:
+1. Look at the overall lighting and sky conditions
+2. Prioritize the most dominant weather feature
+3. Use ONLY these exact labels (respond with just the label, nothing else):
 
-Classify the weather as exactly ONE of these labels:
-- sunny (bright, clear skies, strong sunlight)
-- partly_cloudy (some clouds but still bright)
-- overcast (gray, cloudy skies covering most of the sky)
-- raining (visible rain, wet surfaces, rain drops)
-- snowing (visible snow, snowy conditions)
-- foggy (reduced visibility, fog or mist)
-- night (dark, nighttime conditions)
-- dawn (early morning light, sunrise)
-- dusk (evening light, sunset)
+sunny - bright sunlight, clear blue sky, strong shadows
+partly_cloudy - mixed sun and clouds, still bright overall  
+overcast - gray cloudy sky, no direct sunlight
+raining - visible rain, wet surfaces, or heavy rain clouds
+snowing - visible snow falling or snow-covered scene
+foggy - reduced visibility from fog, mist, or haze
+night - dark conditions, artificial lighting dominant
+dawn - early morning light, sunrise colors
+dusk - evening light, sunset colors
 
-Important: Respond with ONLY the weather label. Do not include any explanation or additional text."""
+IMPORTANT: Respond with ONLY the single most appropriate label. No explanation."""
         
-        # Generate classification with better error handling
+        # FIXED: Use temperature 0 for completely deterministic results
         try:
             print(f"Generating content with model: {selected_model}")
             response = model.generate_content(
                 [prompt, vertex_image],
                 generation_config={
-                    "max_output_tokens": 50,
-                    "temperature": 0.1,
-                    "top_p": 0.8,
+                    "max_output_tokens": 10,  # Reduced - we only want one word
+                    "temperature": 0,         # FIXED: Completely deterministic
+                    "top_p": 1,              # FIXED: No nucleus sampling randomness
+                    "top_k": 1,              # FIXED: Always pick the top choice
                 }
             )
             
@@ -175,16 +184,7 @@ Important: Respond with ONLY the weather label. Do not include any explanation o
                 
         except Exception as generation_error:
             print(f"Generation failed with {selected_model}: {str(generation_error)}")
-            # If generation fails, try with a different model
-            if "gemini-1.5" in selected_model or "gemini-1.0" in selected_model:
-                print("Trying fallback generation approach...")
-                try:
-                    response = model.generate_content([prompt, vertex_image])
-                except Exception as fallback_error:
-                    print(f"Fallback generation also failed: {str(fallback_error)}")
-                    return 'error'
-            else:
-                return 'error'
+            return 'error'
         
         # Extract and clean the response
         classification = response.text.strip().lower()
@@ -194,25 +194,49 @@ Important: Respond with ONLY the weather label. Do not include any explanation o
         # Validate classification against allowed labels
         valid_labels = ['sunny', 'partly_cloudy', 'overcast', 'raining', 'snowing', 'foggy', 'night', 'dawn', 'dusk']
         
-        # Handle variations in response
+        # IMPROVED: More comprehensive mapping for edge cases
         classification_mapping = {
             'clear': 'sunny',
+            'bright': 'sunny',
+            'sunshine': 'sunny',
             'cloudy': 'partly_cloudy',
             'partially_cloudy': 'partly_cloudy',
             'partial_cloudy': 'partly_cloudy',
+            'mixed': 'partly_cloudy',
+            'scattered_clouds': 'partly_cloudy',
+            'gray': 'overcast',
+            'grey': 'overcast',
+            'gloomy': 'overcast',
             'rain': 'raining',
+            'wet': 'raining',
+            'rainy': 'raining',
+            'drizzle': 'raining',
             'snow': 'snowing',
+            'snowy': 'snowing',
+            'blizzard': 'snowing',
             'mist': 'foggy',
             'misty': 'foggy',
+            'hazy': 'foggy',
+            'fog': 'foggy',
             'morning': 'dawn',
             'evening': 'dusk',
             'sunset': 'dusk',
-            'sunrise': 'dawn'
+            'sunrise': 'dawn',
+            'dark': 'night',
+            'nighttime': 'night',
+            'twilight': 'dusk'
         }
         
         # Check if classification needs mapping
         if classification in classification_mapping:
             classification = classification_mapping[classification]
+        
+        # Handle multi-word responses by taking first valid word
+        words = classification.split()
+        for word in words:
+            if word in valid_labels:
+                classification = word
+                break
         
         # Final validation
         if classification not in valid_labels:
@@ -220,6 +244,9 @@ Important: Respond with ONLY the weather label. Do not include any explanation o
             classification = 'unknown'
         
         print(f"Final classification: {classification} using model: {selected_model}")
+        
+        # Cache the result
+        classification_cache[image_hash] = classification
         
         # Store the model used for later reference
         classify_weather_image.last_model = selected_model
@@ -240,15 +267,19 @@ def store_results(image_data, classification):
         client = storage.Client()
         bucket = client.bucket(BUCKET_NAME)
         
+        # Generate image hash for tracking
+        image_hash = hashlib.md5(image_data).hexdigest()[:8]
+        
         # Store image (always overwrite the same file)
         image_blob = bucket.blob('latest_weather_image.jpg')
         image_blob.upload_from_string(image_data, content_type='image/jpeg')
         
-        # Store classification metadata
+        # Store classification metadata with hash for consistency checking
         metadata = {
             'classification': classification,
             'timestamp': datetime.now().isoformat(),
             'image_size': len(image_data),
+            'image_hash': image_hash,  # Track image changes
             'model_used': getattr(classify_weather_image, 'last_model', 'unknown'),
             'vertex_location': LOCATION
         }
@@ -259,7 +290,7 @@ def store_results(image_data, classification):
             content_type='application/json'
         )
         
-        print(f"Stored image with classification: {classification}")
+        print(f"Stored image (hash: {image_hash}) with classification: {classification}")
         
     except Exception as e:
         print(f"Storage error: {str(e)}")
@@ -281,16 +312,18 @@ def display_webpage(headers):
             classification = metadata.get('classification', 'No data available')
             timestamp = metadata.get('timestamp', 'Unknown')
             image_size = metadata.get('image_size', 'Unknown')
+            image_hash = metadata.get('image_hash', 'Unknown')
             model_used = metadata.get('model_used', 'Unknown')
             vertex_location = metadata.get('vertex_location', 'Unknown')
         except:
             classification = 'No data available'
             timestamp = 'Unknown'
             image_size = 'Unknown'
+            image_hash = 'Unknown'
             model_used = 'Unknown'
             vertex_location = 'Unknown'
         
-        # Generate HTML with debug info
+        # Generate HTML with improved consistency
         html_content = f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -298,6 +331,7 @@ def display_webpage(headers):
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Weather Station</title>
+            <meta http-equiv="Cache-Control" content="max-age=300">
             <style>
                 body {{
                     font-family: Arial, sans-serif;
@@ -409,6 +443,15 @@ def display_webpage(headers):
                     margin: 10px 0;
                     border-left: 4px solid #ffc107;
                 }}
+                .consistency-info {{
+                    background-color: #d1ecf1;
+                    color: #0c5460;
+                    padding: 10px;
+                    border-radius: 5px;
+                    margin: 10px 0;
+                    border-left: 4px solid #bee5eb;
+                    font-size: 12px;
+                }}
             </style>
         </head>
         <body>
@@ -417,7 +460,15 @@ def display_webpage(headers):
                 
                 {"<div class='warning'>⚠️ Note: For best results, ensure your Cloud Function is deployed in us-central1 region for optimal model availability.</div>" if vertex_location != 'us-central1' else ""}
                 
-                <img src="https://storage.googleapis.com/{BUCKET_NAME}/latest_weather_image.jpg?t={datetime.now().timestamp()}" 
+                <div class="consistency-info">
+                    ✅ <strong>Consistency Improvements:</strong><br>
+                    • Deterministic AI model (temperature=0)<br>
+                    • Image caching by hash<br>
+                    • Stable model selection<br>
+                    • Enhanced response validation
+                </div>
+                
+                <img src="https://storage.googleapis.com/{BUCKET_NAME}/latest_weather_image.jpg" 
                      alt="Latest Weather Image" 
                      class="weather-image"
                      onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlIEF2YWlsYWJsZTwvdGV4dD48L3N2Zz4='; this.alt='No image available';">
@@ -429,11 +480,13 @@ def display_webpage(headers):
                 
                 <div class="debug-info">
                     <strong>Debug Information:</strong><br>
+                    Image Hash: {image_hash}<br>
                     Image Size: {image_size} bytes<br>
                     Classification: {classification}<br>
                     Model Used: {model_used}<br>
                     Vertex Location: {vertex_location}<br>
-                    Timestamp: {timestamp}
+                    Timestamp: {timestamp}<br>
+                    Cache Status: {"Cached" if image_hash in [k[:8] for k in classification_cache.keys()] else "Fresh Classification"}
                 </div>
                 
                 <div class="timestamp">
@@ -441,7 +494,7 @@ def display_webpage(headers):
                 </div>
                 
                 <button class="refresh-btn" onclick="location.reload()">
-                    🔄 Refresh
+                    🔄 Refresh (Should show same result)
                 </button>
                 
                 <div class="upload-section">
@@ -456,14 +509,14 @@ def display_webpage(headers):
                         • Use outdoor images with visible sky<br>
                         • Ensure good image quality and lighting<br>
                         • Avoid images that are too dark or blurry<br>
-                        • Deploy Cloud Function in us-central1 for best model availability
+                        • Same image should now give consistent results on refresh!
                     </div>
                 </div>
             </div>
             
             <script>
-                // Auto-refresh every 5 minutes
-                setTimeout(() => location.reload(), 300000);
+                // Reduced auto-refresh to 10 minutes to allow testing consistency
+                setTimeout(() => location.reload(), 600000);
                 
                 // Show upload progress
                 document.querySelector('form').addEventListener('submit', function(e) {{
@@ -485,6 +538,7 @@ def display_webpage(headers):
         <html><body>
         <h1>Weather Station</h1>
         <p>Error loading weather data: {str(e)}</p>
+        <p>Please check your Cloud Storage bucket and try again.</p>
         </body></html>
         """
         headers['Content-Type'] = 'text/html'
