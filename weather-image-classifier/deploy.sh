@@ -3,7 +3,7 @@
 # Configuration - Update these values
 PROJECT_ID="weathercloud-460719"
 FUNCTION_NAME="weather-image-classifier"
-REGION="us-central1"  # Changed from europe-west2 to us-central1
+REGION="europe-west1"
 BUCKET_NAME="weathercloud-460719-weather-images"
 
 # Create Cloud Storage bucket if it doesn't exist
@@ -40,4 +40,3 @@ echo "- Function Name: $FUNCTION_NAME"
 echo "- Region: $REGION"
 echo "- Bucket: $BUCKET_NAME"
 echo ""
-echo "Note: Function is now deployed in us-central1 for better Gemini model availability."
