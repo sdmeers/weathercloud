@@ -17,9 +17,6 @@ BUCKET_NAME = os.environ.get('BUCKET_NAME')
 
 vertexai.init(project=PROJECT_ID, location=LOCATION)
 
-# Simple in-memory cache for classifications
-classification_cache = {}
-
 @functions_framework.http
 def weather_image_classifier(request):
     """HTTP Cloud Function that handles image upload, classification, and web display."""
@@ -73,10 +70,19 @@ def handle_image_upload(request, headers):
     # Generate unique image hash BEFORE classification
     image_hash = hashlib.md5(image_data).hexdigest()
           
-    # Store image and classification in Cloud Storage
-    classification = classify_weather_image(image_data, image_hash)
-    store_results(image_data, classification, image_hash)
+    # Classify and get both classification and model name
+    result = classify_weather_image(image_data, image_hash)
     
+    # Handle the returned tuple or single value for backward compatibility
+    if isinstance(result, tuple):
+        classification, model_name = result
+    else:
+        classification = result
+        model_name = "unknown"
+    
+    # Store image and classification in Cloud Storage
+    store_results(image_data, classification, image_hash)
+
     response_data = {
         'classification': classification,
         'timestamp': datetime.now().isoformat(),
@@ -95,10 +101,10 @@ def classify_weather_image(image_data, image_hash):
             print("Error: Empty image data")
             return 'error'
         
-        # Check in-memory cache first (for same session)
-        if image_hash in classification_cache:
-            print(f"Using in-memory cached classification for image hash: {image_hash}")
-            return classification_cache[image_hash]
+        # Remove cache lookup since it causes issues with concurrent requests
+        # if image_hash in classification_cache:
+        #     print(f"Using in-memory cached classification for image hash: {image_hash}")
+        #     return classification_cache[image_hash]
         
         print(f"Processing image of size: {len(image_data)} bytes")
         print(f"Image hash: {image_hash}")
@@ -170,20 +176,19 @@ IMPORTANT: Respond with ONLY the single most appropriate label. No explanation."
         
         print(f"Final classification: {classification} using model: {model_name}")
         
-        # Cache the result in memory for this session
-        classification_cache[image_hash] = classification
+        # Remove global state assignment
+        # classification_cache[image_hash] = classification
+        # classify_weather_image.last_model = model_name
         
-        # Store the model used for later reference
-        classify_weather_image.last_model = model_name
-        
-        return classification
+        # Return both classification and model name for storage
+        return classification, model_name
         
     except Exception as e:
         print(f"Classification error: {str(e)}")
         import traceback
         print(f"Full traceback: {traceback.format_exc()}")
-        return 'error'
-
+        return 'error', 'unknown'
+    
 def validate_and_map_classification(classification):
     """Validate and map classification to allowed labels."""
     
@@ -242,69 +247,76 @@ def validate_and_map_classification(classification):
 
 def store_results(image_data, classification, image_hash):
     """
-    1. Write <hash>.jpg   (e.g. 79939b898ac5….jpg)
-    2. Write <hash>.json
-    3. Overwrite latest_pointer.json  → {"latest": "<hash>"}
-    4. Sweep the bucket and delete *every* object that does not belong
-       to <hash> and is not latest_pointer.json
-
-    After a successful upload the bucket will always contain exactly:
-        <hash>.jpg   <hash>.json   latest_pointer.json
+    Atomic storage operations to prevent race conditions:
+    1. Upload new files first
+    2. Update pointer last (atomic switch)
+    3. Clean up old files after pointer is updated
     """
     try:
-        client  = storage.Client()
-        bucket  = client.bucket(BUCKET_NAME)
+        client = storage.Client()
+        bucket = client.bucket(BUCKET_NAME)
 
-        # ---------------- 1) upload image ----------------------------------
-        img_name  = f"{image_hash}.jpg"
+        # ---------------- 1) Upload new files first ------------------------
+        img_name = f"{image_hash}.jpg"
+        meta_name = f"{image_hash}.json"
+        
+        # Prepare metadata
+        meta = {
+            "classification": classification,
+            "timestamp": datetime.now().isoformat(),
+            "image_size": len(image_data),
+            "image_hash_full": image_hash,
+            "image_filename": img_name,
+            "model_used": getattr(classify_weather_image, "last_model", "unknown"),
+            "vertex_location": LOCATION,
+        }
+
+        # Upload image and metadata (these can happen in parallel)
         bucket.blob(img_name).upload_from_string(
             image_data, content_type="image/jpeg"
         )
-
-        # ---------------- 2) upload metadata -------------------------------
-        meta_name = f"{image_hash}.json"
-        meta      = {
-            "classification":  classification,
-            "timestamp":       datetime.now().isoformat(),
-            "image_size":      len(image_data),
-            "image_hash_full": image_hash,
-            "image_filename":  img_name,
-            "model_used":      getattr(classify_weather_image, "last_model", "unknown"),
-            "vertex_location": LOCATION,
-        }
         bucket.blob(meta_name).upload_from_string(
             json.dumps(meta), content_type="application/json"
         )
 
-        # ---------------- 3) switch the pointer ----------------------------
+        # ---------------- 2) Get list of old files to delete ---------------
+        # Do this BEFORE updating the pointer to avoid race conditions
+        old_blobs = []
+        try:
+            # Read current pointer to see what we're replacing
+            try:
+                old_pointer_blob = bucket.blob("latest_pointer.json")
+                old_pointer = json.loads(old_pointer_blob.download_as_text())
+                old_hash = old_pointer.get("latest")
+            except:
+                old_hash = None
+            
+            # If there was an old hash, mark those files for deletion
+            if old_hash and old_hash != image_hash:
+                for blob in bucket.list_blobs():
+                    if blob.name.startswith(old_hash):
+                        old_blobs.append(blob)
+                        
+        except Exception as cleanup_prep_err:
+            print(f"Warning: could not prepare cleanup list — {cleanup_prep_err}")
+
+        # ---------------- 3) Atomic pointer update -------------------------
+        # This is the critical atomic operation - once this completes,
+        # all GET requests will see the new image
         bucket.blob("latest_pointer.json").upload_from_string(
             json.dumps({"latest": image_hash}), content_type="application/json"
         )
 
-        # ---------------- 4) sweep & delete stale objects ------------------
-        try:
-            keep_prefix  = image_hash                  # current hash
-            keep_pointer = "latest_pointer.json"
-            stale_blobs  = []
+        # ---------------- 4) Clean up old files after pointer update -------
+        if old_blobs:
+            try:
+                bucket.delete_blobs(old_blobs)
+                print(f"Deleted {len(old_blobs)} old file(s): " + 
+                      ", ".join(b.name for b in old_blobs))
+            except Exception as cleanup_err:
+                print(f"Warning: cleanup failed — {cleanup_err}")
 
-            for blob in bucket.list_blobs():
-                name = blob.name
-                if name == keep_pointer:            # keep pointer file
-                    continue
-                if name.startswith(keep_prefix):    # keep latest <hash>.jpg/.json
-                    continue
-                stale_blobs.append(blob)
-
-            if stale_blobs:
-                bucket.delete_blobs(stale_blobs)
-                print(
-                    f"Deleted {len(stale_blobs)} obsolete file(s): "
-                    + ", ".join(b.name for b in stale_blobs)
-                )
-        except Exception as cleanup_err:
-            print(f"Warning: bucket sweep failed — {cleanup_err}")
-
-        print(f"Stored new pair ({img_name}, {meta_name}) with label '{classification}'")
+        print(f"Atomically stored new pair ({img_name}, {meta_name}) with label '{classification}'")
 
     except Exception as e:
         print(f"Storage error: {e}")
@@ -354,7 +366,7 @@ def display_webpage(headers):
             vertex_location  = "Unknown"
             image_url        = ""  # no image to display
 
-        # Generate HTML with improved image loading
+        # Generate HTML with client-side timestamp formatting
         html_content = f"""
             <!DOCTYPE html>
             <html lang="en">
@@ -486,7 +498,7 @@ def display_webpage(headers):
                         Classification: {classification.replace('_',' ').title()}
                     </div>
 
-                    <div class="timestamp">Last updated: {timestamp}</div>
+                    <div class="timestamp" id="timestamp-display">Last updated: Unknown</div>
 
                     <!-- =====  upload form  ===== -->
                     <div class="upload-section">
@@ -498,6 +510,29 @@ def display_webpage(headers):
                         </form>
                     </div>
                 </main>
+
+                <script>
+                    // Format timestamp on the client side
+                    const timestamp = "{timestamp}";
+                    if (timestamp !== "Unknown") {{
+                        try {{
+                            const date = new Date(timestamp);
+                            const formatted = date.toLocaleString('en-GB', {{
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour12: false
+                            }}).replace(',', ',');
+                            
+                            document.getElementById('timestamp-display').textContent = `Last updated: ${{formatted}}`;
+                        }} catch (e) {{
+                            console.error('Error formatting timestamp:', e);
+                            document.getElementById('timestamp-display').textContent = 'Last updated: Unknown';
+                        }}
+                    }}
+                </script>
             </body>
             </html>
             """
