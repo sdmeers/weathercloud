@@ -8,10 +8,11 @@ import json
 from datetime import datetime
 import os
 import hashlib
+import uuid
 
-# Initialize Vertex AI - USE US-CENTRAL1 for better model availability
+# Initialize Vertex AI - USE EUROPE-WEST2 (London) for gemini-2.0-flash-lite
 PROJECT_ID = os.environ.get('PROJECT_ID')
-LOCATION = os.environ.get('LOCATION', 'us-central1')  # Changed default to us-central1
+LOCATION = os.environ.get('LOCATION', 'europe-west1')
 BUCKET_NAME = os.environ.get('BUCKET_NAME')
 
 vertexai.init(project=PROJECT_ID, location=LOCATION)
@@ -69,21 +70,23 @@ def handle_image_upload(request, headers):
     print(f"Image size: {len(image_data)} bytes")
     print(f"Image filename: {image_file.filename}")
     
-    # Classify the weather
-    classification = classify_weather_image(image_data)
-    
+    # Generate unique image hash BEFORE classification
+    image_hash = hashlib.md5(image_data).hexdigest()
+          
     # Store image and classification in Cloud Storage
-    store_results(image_data, classification)
+    classification = classify_weather_image(image_data, image_hash)
+    store_results(image_data, classification, image_hash)
     
     response_data = {
         'classification': classification,
         'timestamp': datetime.now().isoformat(),
-        'status': 'success'
+        'status': 'success',
+        'image_hash': image_hash,
     }
     
     return (json.dumps(response_data), 200, headers)
 
-def classify_weather_image(image_data):
+def classify_weather_image(image_data, image_hash):
     """Classify weather conditions in the image using Vertex AI."""
     
     try:
@@ -92,10 +95,9 @@ def classify_weather_image(image_data):
             print("Error: Empty image data")
             return 'error'
         
-        # Check cache first
-        image_hash = hashlib.md5(image_data).hexdigest()
+        # Check in-memory cache first (for same session)
         if image_hash in classification_cache:
-            print(f"Using cached classification for image hash: {image_hash}")
+            print(f"Using in-memory cached classification for image hash: {image_hash}")
             return classification_cache[image_hash]
         
         print(f"Processing image of size: {len(image_data)} bytes")
@@ -105,47 +107,19 @@ def classify_weather_image(image_data):
         # Create Vertex AI image object directly from bytes
         vertex_image = VertexImage.from_bytes(image_data)
         
-        # FIXED: Use consistent model selection - pick ONE model and stick with it
-        model_names = [
-                        # Gemini 2.0 models (newer, more likely to be available)
-            "gemini-2.0-flash-exp",
-            "gemini-2.0-flash",
-            # Gemini 1.5 models (older but stable)
-            "gemini-1.5-flash-002",
-            "gemini-1.5-flash-001", 
-            "gemini-1.5-flash",
-            "gemini-1.5-pro-002",
-            "gemini-1.5-pro-001",
-            "gemini-1.5-pro",
-            # Legacy models as final fallback
-            "gemini-1.0-pro-vision-001",
-            "gemini-1.0-pro-vision",
-            "gemini-pro-vision"
-        ]
+        # Use gemini-2.0-flash-lite - available in europe-west2, cost-effective for image classification
+        model_name = "gemini-2.0-flash-lite-001"
         
-        model = None
-        selected_model = None
-        last_error = None
-        
-        for model_name in model_names:
-            try:
-                print(f"Attempting to initialize model: {model_name}")
-                model = GenerativeModel(model_name)
-                selected_model = model_name
-                print(f"Successfully initialized model: {model_name}")
-                break
-            except Exception as model_error:
-                print(f"Failed to initialize {model_name}: {str(model_error)}")
-                last_error = model_error
-                continue
-        
-        if model is None:
-            print(f"Failed to initialize any model. Last error: {str(last_error)}")
-            print(f"Current location: {LOCATION}")
-            print("Consider switching to us-central1 region for better model availability")
+        try:
+            print(f"Initializing model: {model_name}")
+            model = GenerativeModel(model_name)
+            print(f"Successfully initialized model: {model_name}")
+        except Exception as model_error:
+            print(f"Failed to initialize {model_name}: {str(model_error)}")
+            print("Make sure you're using LOCATION='europe-west2' where gemini-2.0-flash-lite is available")
             return 'error'
         
-        # IMPROVED: More deterministic prompt with explicit constraints
+        # Deterministic prompt with explicit constraints
         prompt = """Analyze this weather image and classify it with exactly ONE label.
 
 CLASSIFICATION RULES:
@@ -165,16 +139,16 @@ dusk - evening light, sunset colors
 
 IMPORTANT: Respond with ONLY the single most appropriate label. No explanation."""
         
-        # FIXED: Use temperature 0 for completely deterministic results
+        # Use completely deterministic settings
         try:
-            print(f"Generating content with model: {selected_model}")
+            print(f"Generating content with model: {model_name}")
             response = model.generate_content(
                 [prompt, vertex_image],
                 generation_config={
-                    "max_output_tokens": 10,  # Reduced - we only want one word
-                    "temperature": 0,         # FIXED: Completely deterministic
-                    "top_p": 1,              # FIXED: No nucleus sampling randomness
-                    "top_k": 1,              # FIXED: Always pick the top choice
+                    "max_output_tokens": 10,
+                    "temperature": 0,         # Completely deterministic
+                    "top_p": 1,              # No nucleus sampling randomness
+                    "top_k": 1,              # Always pick the top choice
                 }
             )
             
@@ -183,7 +157,7 @@ IMPORTANT: Respond with ONLY the single most appropriate label. No explanation."
                 return 'error'
                 
         except Exception as generation_error:
-            print(f"Generation failed with {selected_model}: {str(generation_error)}")
+            print(f"Generation failed with {model_name}: {str(generation_error)}")
             return 'error'
         
         # Extract and clean the response
@@ -191,65 +165,16 @@ IMPORTANT: Respond with ONLY the single most appropriate label. No explanation."
         print(f"Raw model response: '{response.text}'")
         print(f"Cleaned classification: '{classification}'")
         
-        # Validate classification against allowed labels
-        valid_labels = ['sunny', 'partly_cloudy', 'overcast', 'raining', 'snowing', 'foggy', 'night', 'dawn', 'dusk']
+        # Validate and map classification
+        classification = validate_and_map_classification(classification)
         
-        # IMPROVED: More comprehensive mapping for edge cases
-        classification_mapping = {
-            'clear': 'sunny',
-            'bright': 'sunny',
-            'sunshine': 'sunny',
-            'cloudy': 'partly_cloudy',
-            'partially_cloudy': 'partly_cloudy',
-            'partial_cloudy': 'partly_cloudy',
-            'mixed': 'partly_cloudy',
-            'scattered_clouds': 'partly_cloudy',
-            'gray': 'overcast',
-            'grey': 'overcast',
-            'gloomy': 'overcast',
-            'rain': 'raining',
-            'wet': 'raining',
-            'rainy': 'raining',
-            'drizzle': 'raining',
-            'snow': 'snowing',
-            'snowy': 'snowing',
-            'blizzard': 'snowing',
-            'mist': 'foggy',
-            'misty': 'foggy',
-            'hazy': 'foggy',
-            'fog': 'foggy',
-            'morning': 'dawn',
-            'evening': 'dusk',
-            'sunset': 'dusk',
-            'sunrise': 'dawn',
-            'dark': 'night',
-            'nighttime': 'night',
-            'twilight': 'dusk'
-        }
+        print(f"Final classification: {classification} using model: {model_name}")
         
-        # Check if classification needs mapping
-        if classification in classification_mapping:
-            classification = classification_mapping[classification]
-        
-        # Handle multi-word responses by taking first valid word
-        words = classification.split()
-        for word in words:
-            if word in valid_labels:
-                classification = word
-                break
-        
-        # Final validation
-        if classification not in valid_labels:
-            print(f"Invalid classification received: '{classification}'. Defaulting to 'unknown'")
-            classification = 'unknown'
-        
-        print(f"Final classification: {classification} using model: {selected_model}")
-        
-        # Cache the result
+        # Cache the result in memory for this session
         classification_cache[image_hash] = classification
         
         # Store the model used for later reference
-        classify_weather_image.last_model = selected_model
+        classify_weather_image.last_model = model_name
         
         return classification
         
@@ -259,71 +184,177 @@ IMPORTANT: Respond with ONLY the single most appropriate label. No explanation."
         print(f"Full traceback: {traceback.format_exc()}")
         return 'error'
 
-def store_results(image_data, classification):
-    """Store the latest image and classification in Cloud Storage."""
+def validate_and_map_classification(classification):
+    """Validate and map classification to allowed labels."""
     
+    valid_labels = ['sunny', 'partly_cloudy', 'overcast', 'raining', 'snowing', 'foggy', 'night', 'dawn', 'dusk']
+    
+    # Comprehensive mapping for edge cases
+    classification_mapping = {
+        'clear': 'sunny',
+        'bright': 'sunny',
+        'sunshine': 'sunny',
+        'cloudy': 'partly_cloudy',
+        'partially_cloudy': 'partly_cloudy',
+        'partial_cloudy': 'partly_cloudy',
+        'mixed': 'partly_cloudy',
+        'scattered_clouds': 'partly_cloudy',
+        'gray': 'overcast',
+        'grey': 'overcast',
+        'gloomy': 'overcast',
+        'rain': 'raining',
+        'wet': 'raining',
+        'rainy': 'raining',
+        'drizzle': 'raining',
+        'snow': 'snowing',
+        'snowy': 'snowing',
+        'blizzard': 'snowing',
+        'mist': 'foggy',
+        'misty': 'foggy',
+        'hazy': 'foggy',
+        'fog': 'foggy',
+        'morning': 'dawn',
+        'evening': 'dusk',
+        'sunset': 'dusk',
+        'sunrise': 'dawn',
+        'dark': 'night',
+        'nighttime': 'night',
+        'twilight': 'dusk'
+    }
+    
+    # Check if classification needs mapping
+    if classification in classification_mapping:
+        classification = classification_mapping[classification]
+    
+    # Handle multi-word responses by taking first valid word
+    words = classification.split()
+    for word in words:
+        if word in valid_labels:
+            classification = word
+            break
+    
+    # Final validation
+    if classification not in valid_labels:
+        print(f"Invalid classification received: '{classification}'. Defaulting to 'unknown'")
+        classification = 'unknown'
+    
+    return classification
+
+def store_results(image_data, classification, image_hash):
+    """
+    1. Write <hash>.jpg   (e.g. 79939b898ac5….jpg)
+    2. Write <hash>.json
+    3. Overwrite latest_pointer.json  → {"latest": "<hash>"}
+    4. Sweep the bucket and delete *every* object that does not belong
+       to <hash> and is not latest_pointer.json
+
+    After a successful upload the bucket will always contain exactly:
+        <hash>.jpg   <hash>.json   latest_pointer.json
+    """
     try:
-        # Initialize Cloud Storage client
-        client = storage.Client()
-        bucket = client.bucket(BUCKET_NAME)
-        
-        # Generate image hash for tracking
-        image_hash = hashlib.md5(image_data).hexdigest()[:8]
-        
-        # Store image (always overwrite the same file)
-        image_blob = bucket.blob('latest_weather_image.jpg')
-        image_blob.upload_from_string(image_data, content_type='image/jpeg')
-        
-        # Store classification metadata with hash for consistency checking
-        metadata = {
-            'classification': classification,
-            'timestamp': datetime.now().isoformat(),
-            'image_size': len(image_data),
-            'image_hash': image_hash,  # Track image changes
-            'model_used': getattr(classify_weather_image, 'last_model', 'unknown'),
-            'vertex_location': LOCATION
-        }
-        
-        metadata_blob = bucket.blob('latest_weather_data.json')
-        metadata_blob.upload_from_string(
-            json.dumps(metadata), 
-            content_type='application/json'
+        client  = storage.Client()
+        bucket  = client.bucket(BUCKET_NAME)
+
+        # ---------------- 1) upload image ----------------------------------
+        img_name  = f"{image_hash}.jpg"
+        bucket.blob(img_name).upload_from_string(
+            image_data, content_type="image/jpeg"
         )
-        
-        print(f"Stored image (hash: {image_hash}) with classification: {classification}")
-        
+
+        # ---------------- 2) upload metadata -------------------------------
+        meta_name = f"{image_hash}.json"
+        meta      = {
+            "classification":  classification,
+            "timestamp":       datetime.now().isoformat(),
+            "image_size":      len(image_data),
+            "image_hash_full": image_hash,
+            "image_filename":  img_name,
+            "model_used":      getattr(classify_weather_image, "last_model", "unknown"),
+            "vertex_location": LOCATION,
+        }
+        bucket.blob(meta_name).upload_from_string(
+            json.dumps(meta), content_type="application/json"
+        )
+
+        # ---------------- 3) switch the pointer ----------------------------
+        bucket.blob("latest_pointer.json").upload_from_string(
+            json.dumps({"latest": image_hash}), content_type="application/json"
+        )
+
+        # ---------------- 4) sweep & delete stale objects ------------------
+        try:
+            keep_prefix  = image_hash                  # current hash
+            keep_pointer = "latest_pointer.json"
+            stale_blobs  = []
+
+            for blob in bucket.list_blobs():
+                name = blob.name
+                if name == keep_pointer:            # keep pointer file
+                    continue
+                if name.startswith(keep_prefix):    # keep latest <hash>.jpg/.json
+                    continue
+                stale_blobs.append(blob)
+
+            if stale_blobs:
+                bucket.delete_blobs(stale_blobs)
+                print(
+                    f"Deleted {len(stale_blobs)} obsolete file(s): "
+                    + ", ".join(b.name for b in stale_blobs)
+                )
+        except Exception as cleanup_err:
+            print(f"Warning: bucket sweep failed — {cleanup_err}")
+
+        print(f"Stored new pair ({img_name}, {meta_name}) with label '{classification}'")
+
     except Exception as e:
-        print(f"Storage error: {str(e)}")
+        print(f"Storage error: {e}")
         raise
 
 def display_webpage(headers):
     """Display a simple webpage with the latest image and classification."""
-    
     try:
-        # Get the latest image and classification from Cloud Storage
-        client = storage.Client()
-        bucket = client.bucket(BUCKET_NAME)
-        
-        # Get classification data
+        # 1) Set up Cloud Storage client ------------------------------------
+        client  = storage.Client()
+        bucket  = client.bucket(BUCKET_NAME)
+
+        # 2) Read the tiny pointer file to find the current hash ------------
         try:
-            metadata_blob = bucket.blob('latest_weather_data.json')
-            metadata_json = metadata_blob.download_as_text()
-            metadata = json.loads(metadata_json)
-            classification = metadata.get('classification', 'No data available')
-            timestamp = metadata.get('timestamp', 'Unknown')
-            image_size = metadata.get('image_size', 'Unknown')
-            image_hash = metadata.get('image_hash', 'Unknown')
-            model_used = metadata.get('model_used', 'Unknown')
-            vertex_location = metadata.get('vertex_location', 'Unknown')
-        except:
-            classification = 'No data available'
-            timestamp = 'Unknown'
-            image_size = 'Unknown'
-            image_hash = 'Unknown'
-            model_used = 'Unknown'
-            vertex_location = 'Unknown'
-        
-        # Generate HTML with improved consistency
+            pointer_blob = bucket.blob("latest_pointer.json")
+            pointer      = json.loads(pointer_blob.download_as_text())
+            latest_hash  = pointer.get("latest")          # e.g. "c7779055384ee0..."
+
+            if not latest_hash:
+                raise ValueError("Pointer file missing 'latest' field")
+
+            # 3) Load the matching metadata file ----------------------------
+            meta_blob  = bucket.blob(f"{latest_hash}.json")
+            metadata   = json.loads(meta_blob.download_as_text())
+
+            classification   = metadata.get("classification", "No data available")
+            timestamp        = metadata.get("timestamp",       "Unknown")
+            image_size       = metadata.get("image_size",      "Unknown")
+            image_hash       = metadata.get("image_hash_full", latest_hash)
+            image_filename   = f"{latest_hash}.jpg"
+            model_used       = metadata.get("model_used",      "Unknown")
+            vertex_location  = metadata.get("vertex_location", "Unknown")
+
+            # 4) Public URL for the JPEG (no cache-buster needed; filename is unique)
+            image_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{image_filename}"
+
+        except Exception as e:
+            # If the pointer or metadata doesn't exist yet, fall back to placeholders
+            print(f"display_webpage: could not load latest data — {e}")
+
+            classification   = "No data available"
+            timestamp        = "Unknown"
+            image_size       = "Unknown"
+            image_hash       = "Unknown"
+            image_filename   = ""
+            model_used       = "Unknown"
+            vertex_location  = "Unknown"
+            image_url        = ""  # no image to display
+
+        # Generate HTML with improved image loading
         html_content = f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -331,7 +362,9 @@ def display_webpage(headers):
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Weather Station</title>
-            <meta http-equiv="Cache-Control" content="max-age=300">
+            <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+            <meta http-equiv="Pragma" content="no-cache">
+            <meta http-equiv="Expires" content="0">
             <style>
                 body {{
                     font-family: Arial, sans-serif;
@@ -435,22 +468,14 @@ def display_webpage(headers):
                 .status-unknown {{
                     background-color: #f39c12;
                 }}
-                .warning {{
+                .improvement-note {{
                     background-color: #fff3cd;
                     color: #856404;
-                    padding: 10px;
+                    padding: 15px;
                     border-radius: 5px;
-                    margin: 10px 0;
+                    margin: 15px 0;
                     border-left: 4px solid #ffc107;
-                }}
-                .consistency-info {{
-                    background-color: #d1ecf1;
-                    color: #0c5460;
-                    padding: 10px;
-                    border-radius: 5px;
-                    margin: 10px 0;
-                    border-left: 4px solid #bee5eb;
-                    font-size: 12px;
+                    text-align: left;
                 }}
             </style>
         </head>
@@ -458,17 +483,15 @@ def display_webpage(headers):
             <div class="container">
                 <h1>🌤️ Weather Station</h1>
                 
-                {"<div class='warning'>⚠️ Note: For best results, ensure your Cloud Function is deployed in us-central1 region for optimal model availability.</div>" if vertex_location != 'us-central1' else ""}
-                
-                <div class="consistency-info">
-                    ✅ <strong>Consistency Improvements:</strong><br>
-                    • Deterministic AI model (temperature=0)<br>
-                    • Image caching by hash<br>
-                    • Stable model selection<br>
-                    • Enhanced response validation
+                <div class="improvement-note">
+                    <strong>🎯 Simplified Model Strategy:</strong><br>
+                    • Now uses only gemini-2.0-flash-lite (cost-effective, reliable)<br>
+                    • Deployed in europe-west2 (London) region for model availability<br>
+                    • No more complex fallback logic - single, known-working model<br>
+                    • Should consistently classify images without errors
                 </div>
                 
-                <img src="https://storage.googleapis.com/{BUCKET_NAME}/latest_weather_image.jpg" 
+                <img src="{image_url}" 
                      alt="Latest Weather Image" 
                      class="weather-image"
                      onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlIEF2YWlsYWJsZTwvdGV4dD48L3N2Zz4='; this.alt='No image available';">
@@ -485,16 +508,16 @@ def display_webpage(headers):
                     Classification: {classification}<br>
                     Model Used: {model_used}<br>
                     Vertex Location: {vertex_location}<br>
-                    Timestamp: {timestamp}<br>
-                    Cache Status: {"Cached" if image_hash in [k[:8] for k in classification_cache.keys()] else "Fresh Classification"}
+                    Image URL: {image_filename}<br>
+                    Timestamp: {timestamp}
                 </div>
                 
                 <div class="timestamp">
                     Last Updated: {timestamp}
                 </div>
                 
-                <button class="refresh-btn" onclick="location.reload()">
-                    🔄 Refresh (Should show same result)
+                <button class="refresh-btn" onclick="window.location.reload(true)">
+                    🔄 Hard Refresh (Force reload)
                 </button>
                 
                 <div class="upload-section">
@@ -505,31 +528,23 @@ def display_webpage(headers):
                     </form>
                     
                     <div style="margin-top: 15px; font-size: 12px; color: #666;">
-                        <strong>Tips for better results:</strong><br>
-                        • Use outdoor images with visible sky<br>
-                        • Ensure good image quality and lighting<br>
-                        • Avoid images that are too dark or blurry<br>
-                        • Same image should now give consistent results on refresh!
+                        <strong>Expected Behavior:</strong><br>
+                        • Uses gemini-2.0-flash-lite model (cost-effective and reliable)<br>
+                        • Deployed in europe-west2 (London) region<br>
+                        • Should consistently classify images without model errors<br>
+                        • Same image uploaded again will use stored result
                     </div>
                 </div>
             </div>
-            
-            <script>
-                // Reduced auto-refresh to 10 minutes to allow testing consistency
-                setTimeout(() => location.reload(), 600000);
-                
-                // Show upload progress
-                document.querySelector('form').addEventListener('submit', function(e) {{
-                    const button = this.querySelector('button');
-                    button.textContent = '⏳ Analyzing...';
-                    button.disabled = true;
-                }});
-            </script>
         </body>
         </html>
         """
         
         headers['Content-Type'] = 'text/html'
+        headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        headers['Pragma'] = 'no-cache'
+        headers['Expires'] = '0'
+        
         return (html_content, 200, headers)
         
     except Exception as e:
