@@ -356,189 +356,151 @@ def display_webpage(headers):
 
         # Generate HTML with improved image loading
         html_content = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Weather Station</title>
-            <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-            <meta http-equiv="Pragma" content="no-cache">
-            <meta http-equiv="Expires" content="0">
-            <style>
-                body {{
-                    font-family: Arial, sans-serif;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    background-color: #f0f8ff;
-                    text-align: center;
-                }}
-                .container {{
-                    background: white;
-                    border-radius: 10px;
-                    padding: 30px;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                }}
-                h1 {{
-                    color: #2c3e50;
-                    margin-bottom: 30px;
-                }}
-                .weather-image {{
-                    max-width: 100%;
-                    height: auto;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                    margin-bottom: 20px;
-                }}
-                .classification {{
-                    font-size: 24px;
-                    font-weight: bold;
-                    color: #34495e;
-                    margin: 20px 0;
-                    padding: 15px;
-                    background-color: #ecf0f1;
-                    border-radius: 5px;
-                    text-transform: capitalize;
-                }}
-                .debug-info {{
-                    font-size: 12px;
-                    color: #7f8c8d;
-                    background-color: #f8f9fa;
-                    padding: 10px;
-                    border-radius: 5px;
-                    margin: 10px 0;
-                    text-align: left;
-                }}
-                .timestamp {{
-                    color: #7f8c8d;
-                    font-size: 14px;
-                    margin-top: 10px;
-                }}
-                .upload-section {{
-                    margin-top: 30px;
-                    padding: 20px;
-                    background-color: #f8f9fa;
-                    border-radius: 5px;
-                }}
-                .upload-form {{
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: 10px;
-                }}
-                input[type="file"] {{
-                    padding: 10px;
-                    border: 2px dashed #3498db;
-                    border-radius: 5px;
-                    background-color: white;
-                }}
-                button {{
-                    background-color: #3498db;
-                    color: white;
-                    padding: 10px 20px;
-                    border: none;
-                    border-radius: 5px;
-                    cursor: pointer;
-                    font-size: 16px;
-                }}
-                button:hover {{
-                    background-color: #2980b9;
-                }}
-                .refresh-btn {{
-                    margin-top: 20px;
-                    background-color: #27ae60;
-                }}
-                .refresh-btn:hover {{
-                    background-color: #229954;
-                }}
-                .status-indicator {{
-                    display: inline-block;
-                    width: 10px;
-                    height: 10px;
-                    border-radius: 50%;
-                    margin-right: 5px;
-                }}
-                .status-success {{
-                    background-color: #27ae60;
-                }}
-                .status-error {{
-                    background-color: #e74c3c;
-                }}
-                .status-unknown {{
-                    background-color: #f39c12;
-                }}
-                .improvement-note {{
-                    background-color: #fff3cd;
-                    color: #856404;
-                    padding: 15px;
-                    border-radius: 5px;
-                    margin: 15px 0;
-                    border-left: 4px solid #ffc107;
-                    text-align: left;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>🌤️ Weather Station</h1>
-                
-                <div class="improvement-note">
-                    <strong>🎯 Simplified Model Strategy:</strong><br>
-                    • Now uses only gemini-2.0-flash-lite (cost-effective, reliable)<br>
-                    • Deployed in europe-west2 (London) region for model availability<br>
-                    • No more complex fallback logic - single, known-working model<br>
-                    • Should consistently classify images without errors
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Weather Image Classifier</title>
+
+                <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+                <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;700&display=swap">
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+                <script src="https://kit.fontawesome.com/e1d7788428.js" crossorigin="anonymous"></script>
+
+                <style>
+                    /* ========= page-specific tweaks ========= */
+                    html, body {{
+                        margin: 0;
+                        padding: 0;
+                        background: #ffffff;
+                        font-family: "Raleway", sans-serif;
+                    }}
+
+                    /* keep content from sliding under the fixed nav */
+                    main {{
+                        max-width: 800px;
+                        margin: 80px auto 40px;   /* 44 px nav + extra */
+                        padding: 0 16px;
+                        text-align: center;
+                    }}
+
+                    .weather-image {{
+                        max-width: 100%;
+                        height: auto;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+                    }}
+
+                    .classification-result {{
+                        margin-top: 16px;
+                        font-size: 20px;
+                        font-weight: 500;
+                        color: #333;
+                        font-family: "Raleway", sans-serif;
+                    }}
+
+                    .timestamp {{
+                        margin-top: 6px;
+                        font-size: 13px;
+                        color: #666;
+                    }}
+
+                    .upload-section {{
+                        margin-top: 40px;
+                        padding: 24px;
+                        border: 1px dashed #bbb;
+                        border-radius: 8px;
+                    }}
+                    .upload-section input[type=file] {{
+                        margin-bottom: 12px;
+                    }}
+                    .upload-section button {{
+                        background:#007bff;
+                        color:#fff;
+                        border:none;
+                        padding:10px 22px;
+                        border-radius:5px;
+                        cursor:pointer;
+                    }}
+                    .upload-section button:hover {{ background:#0069d9; }}
+
+                    .common_navbar {{
+                        width: 100%;
+                        background-color: black;
+                        color: white;
+                        padding: 0 16px;
+                        z-index: 4;
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        height: 44px;
+                        font-family: 'Roboto', sans-serif;
+                        box-sizing: border-box;
+                    }}
+                    .common_navbar a {{
+                        text-decoration: none;
+                        color: white !important;
+                        font-family: 'Roboto', sans-serif;
+                        font-size: 18px;
+                        font-weight: 400;
+                        display: flex;
+                        align-items: center;
+                        white-space: nowrap;
+                        line-height: 1;
+                    }}
+                    .common_navbar a:hover {{
+                        color: #ccc !important;
+                    }}
+                    .common_navbar i {{
+                        margin-right: 5px;
+                        font-size: 18px;
+                        line-height: 1;
+                    }}
+                </style>
+            </head>
+            <body class="w3-white">
+
+                <!-- =========  shared navigation bar  ========= -->
+                <div class="common_navbar">
+                    <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/">
+                        <i class="fa-solid fa-magnifying-glass-chart"></i>&nbsp;Interactive&nbsp;Dashboard
+                    </a>
+                    <a href="https://weather-chat-728445650450.europe-west2.run.app/">
+                        <i class="fa-solid fa-comments"></i>&nbsp;Chatbot
+                    </a>
                 </div>
-                
-                <img src="{image_url}" 
-                     alt="Latest Weather Image" 
-                     class="weather-image"
-                     onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlIEF2YWlsYWJsZTwvdGV4dD48L3N2Zz4='; this.alt='No image available';">
-                
-                <div class="classification">
-                    <span class="status-indicator status-{('success' if classification not in ['error', 'unknown', 'No data available'] else 'error' if classification == 'error' else 'unknown')}"></span>
-                    Weather Condition: {classification.replace('_', ' ')}
-                </div>
-                
-                <div class="debug-info">
-                    <strong>Debug Information:</strong><br>
-                    Image Hash: {image_hash}<br>
-                    Image Size: {image_size} bytes<br>
-                    Classification: {classification}<br>
-                    Model Used: {model_used}<br>
-                    Vertex Location: {vertex_location}<br>
-                    Image URL: {image_filename}<br>
-                    Timestamp: {timestamp}
-                </div>
-                
-                <div class="timestamp">
-                    Last Updated: {timestamp}
-                </div>
-                
-                <button class="refresh-btn" onclick="window.location.reload(true)">
-                    🔄 Hard Refresh (Force reload)
-                </button>
-                
-                <div class="upload-section">
-                    <h3>Upload New Weather Image</h3>
-                    <form class="upload-form" enctype="multipart/form-data" method="post">
-                        <input type="file" name="image" accept="image/*" required>
-                        <button type="submit">📸 Upload & Analyze</button>
-                    </form>
-                    
-                    <div style="margin-top: 15px; font-size: 12px; color: #666;">
-                        <strong>Expected Behavior:</strong><br>
-                        • Uses gemini-2.0-flash-lite model (cost-effective and reliable)<br>
-                        • Deployed in europe-west2 (London) region<br>
-                        • Should consistently classify images without model errors<br>
-                        • Same image uploaded again will use stored result
+
+                <!-- =========  main content  ========= -->
+                <main>
+                    <h1 style="font-weight:600; font-size:32px;">Latest Weather Image</h1>
+
+                    <img src="{image_url}" alt="Latest Weather Image" class="weather-image"
+                        onerror="this.style.display='none';" />
+
+                    <div class="classification-result">
+                        Classification: {classification.replace('_',' ').title()}
                     </div>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+
+                    <div class="timestamp">Last updated: {timestamp}</div>
+
+                    <!-- =====  upload form  ===== -->
+                    <div class="upload-section">
+                        <h3 style="margin-top:0;">Upload a new photo</h3>
+                        <form enctype="multipart/form-data" method="post">
+                            <input type="file" name="image" accept="image/*" required>
+                            <br>
+                            <button type="submit"><i class="fa fa-upload"></i>&nbsp;Upload&nbsp;&amp;&nbsp;Analyze</button>
+                        </form>
+                    </div>
+                </main>
+            </body>
+            </html>
+            """
         
         headers['Content-Type'] = 'text/html'
         headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
