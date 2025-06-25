@@ -9,6 +9,7 @@ from datetime import datetime
 import os
 import hashlib
 import uuid
+import time
 
 # Initialize Vertex AI - USE EUROPE-WEST2 (London) for gemini-2.0-flash-lite
 PROJECT_ID = os.environ.get('PROJECT_ID')
@@ -68,7 +69,10 @@ def handle_image_upload(request, headers):
     print(f"Image filename: {image_file.filename}")
     
     # Generate unique image hash BEFORE classification
-    image_hash = hashlib.md5(image_data).hexdigest()
+    # Add timestamp to ensure uniqueness even for identical images
+    timestamp_ms = int(time.time() * 1000)
+    combined_data = image_data + str(timestamp_ms).encode()
+    image_hash = hashlib.md5(combined_data).hexdigest()
           
     # Classify and get both classification and model name
     result = classify_weather_image(image_data, image_hash)
@@ -81,7 +85,7 @@ def handle_image_upload(request, headers):
         model_name = "unknown"
     
     # Store image and classification in Cloud Storage
-    store_results(image_data, classification, image_hash)
+    store_results(image_data, classification, image_hash, model_name, timestamp_ms)
 
     response_data = {
         'classification': classification,
@@ -100,11 +104,6 @@ def classify_weather_image(image_data, image_hash):
         if not image_data or len(image_data) == 0:
             print("Error: Empty image data")
             return 'error'
-        
-        # Remove cache lookup since it causes issues with concurrent requests
-        # if image_hash in classification_cache:
-        #     print(f"Using in-memory cached classification for image hash: {image_hash}")
-        #     return classification_cache[image_hash]
         
         print(f"Processing image of size: {len(image_data)} bytes")
         print(f"Image hash: {image_hash}")
@@ -176,10 +175,6 @@ IMPORTANT: Respond with ONLY the single most appropriate label. No explanation."
         
         print(f"Final classification: {classification} using model: {model_name}")
         
-        # Remove global state assignment
-        # classification_cache[image_hash] = classification
-        # classify_weather_image.last_model = model_name
-        
         # Return both classification and model name for storage
         return classification, model_name
         
@@ -245,313 +240,485 @@ def validate_and_map_classification(classification):
     
     return classification
 
-def store_results(image_data, classification, image_hash):
+def store_results(image_data, classification, image_hash, model_name, timestamp_ms):
     """
-    Atomic storage operations to prevent race conditions:
-    1. Upload new files first
-    2. Update pointer last (atomic switch)
-    3. Clean up old files after pointer is updated
+    Improved atomic storage operations with better error handling and cleanup.
     """
     try:
         client = storage.Client()
         bucket = client.bucket(BUCKET_NAME)
 
-        # ---------------- 1) Upload new files first ------------------------
-        img_name = f"{image_hash}.jpg"
-        meta_name = f"{image_hash}.json"
+        # Generate unique filenames with timestamp
+        img_name = f"{image_hash}_{timestamp_ms}.jpg"
+        meta_name = f"{image_hash}_{timestamp_ms}.json"
         
-        # Prepare metadata
+        # Prepare metadata with additional cache-busting info
         meta = {
             "classification": classification,
             "timestamp": datetime.now().isoformat(),
+            "timestamp_ms": timestamp_ms,
             "image_size": len(image_data),
             "image_hash_full": image_hash,
             "image_filename": img_name,
-            "model_used": getattr(classify_weather_image, "last_model", "unknown"),
+            "model_used": model_name,
             "vertex_location": LOCATION,
+            "cache_buster": str(uuid.uuid4())  # Additional uniqueness
         }
 
-        # Upload image and metadata (these can happen in parallel)
-        bucket.blob(img_name).upload_from_string(
-            image_data, content_type="image/jpeg"
-        )
-        bucket.blob(meta_name).upload_from_string(
-            json.dumps(meta), content_type="application/json"
-        )
-
-        # ---------------- 2) Get list of old files to delete ---------------
-        # Do this BEFORE updating the pointer to avoid race conditions
-        old_blobs = []
+        # Get list of ALL existing files before uploading new ones
+        existing_blobs = []
         try:
-            # Read current pointer to see what we're replacing
+            existing_blobs = list(bucket.list_blobs())
+            print(f"Found {len(existing_blobs)} existing files in bucket")
+        except Exception as list_error:
+            print(f"Warning: Could not list existing blobs: {list_error}")
+
+        # Upload new files first
+        print(f"Uploading new files: {img_name}, {meta_name}")
+        
+        # Upload with explicit cache control headers
+        img_blob = bucket.blob(img_name)
+        img_blob.cache_control = "no-cache, no-store, must-revalidate"
+        img_blob.upload_from_string(image_data, content_type="image/jpeg")
+        
+        meta_blob = bucket.blob(meta_name)
+        meta_blob.cache_control = "no-cache, no-store, must-revalidate"
+        meta_blob.upload_from_string(json.dumps(meta), content_type="application/json")
+
+        # Update pointer atomically
+        pointer_data = {
+            "latest": image_hash,
+            "timestamp_ms": timestamp_ms,
+            "img_filename": img_name,
+            "meta_filename": meta_name,
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        pointer_blob = bucket.blob("latest_pointer.json")
+        pointer_blob.cache_control = "no-cache, no-store, must-revalidate"
+        pointer_blob.upload_from_string(json.dumps(pointer_data), content_type="application/json")
+        
+        print(f"Updated pointer to: {image_hash}")
+
+        # Clean up old files (keep only the latest)
+        files_to_delete = []
+        for blob in existing_blobs:
+            # Don't delete the pointer file or the files we just uploaded
+            if (blob.name != "latest_pointer.json" and 
+                blob.name != img_name and 
+                blob.name != meta_name):
+                files_to_delete.append(blob)
+
+        if files_to_delete:
             try:
-                old_pointer_blob = bucket.blob("latest_pointer.json")
-                old_pointer = json.loads(old_pointer_blob.download_as_text())
-                old_hash = old_pointer.get("latest")
-            except:
-                old_hash = None
-            
-            # If there was an old hash, mark those files for deletion
-            if old_hash and old_hash != image_hash:
-                for blob in bucket.list_blobs():
-                    if blob.name.startswith(old_hash):
-                        old_blobs.append(blob)
-                        
-        except Exception as cleanup_prep_err:
-            print(f"Warning: could not prepare cleanup list — {cleanup_prep_err}")
+                bucket.delete_blobs(files_to_delete)
+                print(f"Cleaned up {len(files_to_delete)} old files")
+            except Exception as cleanup_error:
+                print(f"Warning: Cleanup failed: {cleanup_error}")
 
-        # ---------------- 3) Atomic pointer update -------------------------
-        # This is the critical atomic operation - once this completes,
-        # all GET requests will see the new image
-        bucket.blob("latest_pointer.json").upload_from_string(
-            json.dumps({"latest": image_hash}), content_type="application/json"
-        )
-
-        # ---------------- 4) Clean up old files after pointer update -------
-        if old_blobs:
-            try:
-                bucket.delete_blobs(old_blobs)
-                print(f"Deleted {len(old_blobs)} old file(s): " + 
-                      ", ".join(b.name for b in old_blobs))
-            except Exception as cleanup_err:
-                print(f"Warning: cleanup failed — {cleanup_err}")
-
-        print(f"Atomically stored new pair ({img_name}, {meta_name}) with label '{classification}'")
+        print(f"Successfully stored new image with classification: {classification}")
 
     except Exception as e:
         print(f"Storage error: {e}")
+        import traceback
+        print(f"Storage traceback: {traceback.format_exc()}")
         raise
 
 def display_webpage(headers):
-    """Display a simple webpage with the latest image and classification."""
+    """Display webpage with improved cache handling and error recovery."""
     try:
-        # 1) Set up Cloud Storage client ------------------------------------
-        client  = storage.Client()
-        bucket  = client.bucket(BUCKET_NAME)
+        client = storage.Client()
+        bucket = client.bucket(BUCKET_NAME)
 
-        # 2) Read the tiny pointer file to find the current hash ------------
+        # Check if bucket is empty or has any files
+        try:
+            all_blobs = list(bucket.list_blobs(max_results=1))
+            if not all_blobs:
+                print("Bucket is completely empty")
+                return display_empty_bucket_page(headers)
+        except Exception as e:
+            print(f"Could not check bucket contents: {e}")
+            return display_empty_bucket_page(headers)
+
+        # Try to read pointer file
         try:
             pointer_blob = bucket.blob("latest_pointer.json")
-            pointer      = json.loads(pointer_blob.download_as_text())
-            latest_hash  = pointer.get("latest")          # e.g. "c7779055384ee0..."
+            if not pointer_blob.exists():
+                print("Pointer file does not exist")
+                return display_empty_bucket_page(headers)
+                
+            pointer = json.loads(pointer_blob.download_as_text())
+            latest_hash = pointer.get("latest")
+            timestamp_ms = pointer.get("timestamp_ms", "")
+            img_filename = pointer.get("img_filename")
+            meta_filename = pointer.get("meta_filename")
 
-            if not latest_hash:
-                raise ValueError("Pointer file missing 'latest' field")
+            if not latest_hash or not img_filename or not meta_filename:
+                print("Pointer file is incomplete")
+                return display_empty_bucket_page(headers)
 
-            # 3) Load the matching metadata file ----------------------------
-            meta_blob  = bucket.blob(f"{latest_hash}.json")
-            metadata   = json.loads(meta_blob.download_as_text())
+            # Check if referenced files actually exist
+            img_blob = bucket.blob(img_filename)
+            meta_blob = bucket.blob(meta_filename)
+            
+            if not img_blob.exists() or not meta_blob.exists():
+                print(f"Referenced files don't exist: {img_filename}, {meta_filename}")
+                return display_empty_bucket_page(headers)
 
-            classification   = metadata.get("classification", "No data available")
-            timestamp        = metadata.get("timestamp",       "Unknown")
-            image_size       = metadata.get("image_size",      "Unknown")
-            image_hash       = metadata.get("image_hash_full", latest_hash)
-            image_filename   = f"{latest_hash}.jpg"
-            model_used       = metadata.get("model_used",      "Unknown")
-            vertex_location  = metadata.get("vertex_location", "Unknown")
+            # Load metadata
+            metadata = json.loads(meta_blob.download_as_text())
+            
+            classification = metadata.get("classification", "Unknown")
+            timestamp = metadata.get("timestamp", "Unknown")
+            image_size = metadata.get("image_size", "Unknown")
+            model_used = metadata.get("model_used", "Unknown")
+            vertex_location = metadata.get("vertex_location", "Unknown")
 
-            # 4) Public URL for the JPEG (no cache-buster needed; filename is unique)
-            image_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{image_filename}"
+            # Create cache-busted image URL
+            cache_buster = int(time.time())
+            image_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{img_filename}?cb={cache_buster}"
 
         except Exception as e:
-            # If the pointer or metadata doesn't exist yet, fall back to placeholders
-            print(f"display_webpage: could not load latest data — {e}")
+            print(f"Error loading current data: {e}")
+            return display_empty_bucket_page(headers)
 
-            classification   = "No data available"
-            timestamp        = "Unknown"
-            image_size       = "Unknown"
-            image_hash       = "Unknown"
-            image_filename   = ""
-            model_used       = "Unknown"
-            vertex_location  = "Unknown"
-            image_url        = ""  # no image to display
-
-        # Generate HTML with client-side timestamp formatting
-        html_content = f"""
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Weather Image Classifier</title>
-
-                <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
-                <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;700&display=swap">
-                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-                <script src="https://kit.fontawesome.com/e1d7788428.js" crossorigin="anonymous"></script>
-
-                <style>
-                    /* ========= page-specific tweaks ========= */
-                    html, body {{
-                        margin: 0;
-                        padding: 0;
-                        background: #ffffff;
-                        font-family: "Raleway", sans-serif;
-                    }}
-
-                    /* keep content from sliding under the fixed nav */
-                    main {{
-                        max-width: 800px;
-                        margin: 80px auto 40px;   /* 44 px nav + extra */
-                        padding: 0 16px;
-                        text-align: center;
-                    }}
-
-                    .weather-image {{
-                        max-width: 100%;
-                        height: auto;
-                        border-radius: 8px;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-                    }}
-
-                    .classification-result {{
-                        margin-top: 16px;
-                        font-size: 20px;
-                        font-weight: 500;
-                        color: #333;
-                        font-family: "Raleway", sans-serif;
-                    }}
-
-                    .timestamp {{
-                        margin-top: 6px;
-                        font-size: 13px;
-                        color: #666;
-                    }}
-
-                    .upload-section {{
-                        margin-top: 40px;
-                        padding: 24px;
-                        border: 1px dashed #bbb;
-                        border-radius: 8px;
-                    }}
-                    .upload-section input[type=file] {{
-                        margin-bottom: 12px;
-                    }}
-                    .upload-section button {{
-                        background:#007bff;
-                        color:#fff;
-                        border:none;
-                        padding:10px 22px;
-                        border-radius:5px;
-                        cursor:pointer;
-                    }}
-                    .upload-section button:hover {{ background:#0069d9; }}
-
-                    .common_navbar {{
-                        width: 100%;
-                        background-color: black;
-                        color: white;
-                        padding: 0 16px;
-                        z-index: 4;
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        height: 44px;
-                        font-family: 'Roboto', sans-serif;
-                        box-sizing: border-box;
-                    }}
-                    .common_navbar a {{
-                        text-decoration: none;
-                        color: white !important;
-                        font-family: 'Roboto', sans-serif;
-                        font-size: 18px;
-                        font-weight: 400;
-                        display: flex;
-                        align-items: center;
-                        white-space: nowrap;
-                        line-height: 1;
-                    }}
-                    .common_navbar a:hover {{
-                        color: #ccc !important;
-                    }}
-                    .common_navbar i {{
-                        margin-right: 5px;
-                        font-size: 18px;
-                        line-height: 1;
-                    }}
-                </style>
-            </head>
-            <body class="w3-white">
-
-                <!-- =========  shared navigation bar  ========= -->
-                <div class="common_navbar">
-                    <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/">
-                        <i class="fa-solid fa-magnifying-glass-chart"></i>&nbsp;Interactive&nbsp;Dashboard
-                    </a>
-                    <a href="https://weather-chat-728445650450.europe-west2.run.app/">
-                        <i class="fa-solid fa-comments"></i>&nbsp;Chatbot
-                    </a>
-                </div>
-
-                <!-- =========  main content  ========= -->
-                <main>
-                    <h1 style="font-weight:600; font-size:32px;">Latest Weather Image</h1>
-
-                    <img src="{image_url}" alt="Latest Weather Image" class="weather-image"
-                        onerror="this.style.display='none';" />
-
-                    <div class="classification-result">
-                        Classification: {classification.replace('_',' ').title()}
-                    </div>
-
-                    <div class="timestamp" id="timestamp-display">Last updated: Unknown</div>
-
-                    <!-- =====  upload form  ===== -->
-                    <div class="upload-section">
-                        <h3 style="margin-top:0;">Upload a new photo</h3>
-                        <form enctype="multipart/form-data" method="post">
-                            <input type="file" name="image" accept="image/*" required>
-                            <br>
-                            <button type="submit"><i class="fa fa-upload"></i>&nbsp;Upload&nbsp;&amp;&nbsp;Analyze</button>
-                        </form>
-                    </div>
-                </main>
-
-                <script>
-                    // Format timestamp on the client side
-                    const timestamp = "{timestamp}";
-                    if (timestamp !== "Unknown") {{
-                        try {{
-                            const date = new Date(timestamp);
-                            const formatted = date.toLocaleString('en-GB', {{
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour12: false
-                            }}).replace(',', ',');
-                            
-                            document.getElementById('timestamp-display').textContent = `Last updated: ${{formatted}}`;
-                        }} catch (e) {{
-                            console.error('Error formatting timestamp:', e);
-                            document.getElementById('timestamp-display').textContent = 'Last updated: Unknown';
-                        }}
-                    }}
-                </script>
-            </body>
-            </html>
-            """
+        # Generate HTML with strong cache prevention
+        html_content = generate_main_html(
+            image_url, classification, timestamp, 
+            image_size, model_used, vertex_location, latest_hash
+        )
         
-        headers['Content-Type'] = 'text/html'
-        headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        headers['Pragma'] = 'no-cache'
-        headers['Expires'] = '0'
+        # Strong cache prevention headers
+        headers.update({
+            'Content-Type': 'text/html',
+            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Last-Modified': datetime.now().strftime('%a, %d %b %Y %H:%M:%S GMT'),
+            'ETag': f'"{latest_hash}-{int(time.time())}"'
+        })
         
         return (html_content, 200, headers)
         
     except Exception as e:
         print(f"Webpage error: {str(e)}")
-        error_html = f"""
-        <html><body>
-        <h1>Weather Station</h1>
-        <p>Error loading weather data: {str(e)}</p>
-        <p>Please check your Cloud Storage bucket and try again.</p>
-        </body></html>
-        """
-        headers['Content-Type'] = 'text/html'
-        return (error_html, 500, headers)
+        return display_error_page(str(e), headers)
+
+def display_empty_bucket_page(headers):
+    """Display page when bucket is empty or has no valid data."""
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Weather Image Classifier</title>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;700&display=swap">
+        <script src="https://kit.fontawesome.com/e1d7788428.js" crossorigin="anonymous"></script>
+        <style>
+            html, body {{
+                margin: 0;
+                padding: 0;
+                background: #ffffff;
+                font-family: "Raleway", sans-serif;
+            }}
+            main {{
+                max-width: 800px;
+                margin: 80px auto 40px;
+                padding: 0 16px;
+                text-align: center;
+            }}
+            .empty-state {{
+                padding: 40px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                margin: 20px 0;
+            }}
+            .upload-section {{
+                margin-top: 40px;
+                padding: 24px;
+                border: 1px dashed #bbb;
+                border-radius: 8px;
+            }}
+            .upload-section input[type=file] {{
+                margin-bottom: 12px;
+            }}
+            .upload-section button {{
+                background:#007bff;
+                color:#fff;
+                border:none;
+                padding:10px 22px;
+                border-radius:5px;
+                cursor:pointer;
+            }}
+            .upload-section button:hover {{ background:#0069d9; }}
+            .common_navbar {{
+                width: 100%;
+                background-color: black;
+                color: white;
+                padding: 0 16px;
+                z-index: 4;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                height: 44px;
+                font-family: 'Roboto', sans-serif;
+                box-sizing: border-box;
+            }}
+            .common_navbar a {{
+                text-decoration: none;
+                color: white !important;
+                font-family: 'Roboto', sans-serif;
+                font-size: 18px;
+                font-weight: 400;
+                display: flex;
+                align-items: center;
+                white-space: nowrap;
+                line-height: 1;
+            }}
+            .common_navbar a:hover {{ color: #ccc !important; }}
+            .common_navbar i {{
+                margin-right: 5px;
+                font-size: 18px;
+                line-height: 1;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="common_navbar">
+            <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/">
+                <i class="fa-solid fa-magnifying-glass-chart"></i>&nbsp;Interactive&nbsp;Dashboard
+            </a>
+            <a href="https://weather-chat-728445650450.europe-west2.run.app/">
+                <i class="fa-solid fa-comments"></i>&nbsp;Chatbot
+            </a>
+        </div>
+
+        <main>
+            <h1 style="font-weight:600; font-size:32px;">Weather Image Classifier</h1>
+            
+            <div class="empty-state">
+                <i class="fa-solid fa-cloud" style="font-size: 48px; color: #6c757d; margin-bottom: 20px;"></i>
+                <h3>No weather images yet</h3>
+                <p>Upload your first weather photo to get started!</p>
+            </div>
+
+            <div class="upload-section">
+                <h3 style="margin-top:0;">Upload a weather photo</h3>
+                <form enctype="multipart/form-data" method="post">
+                    <input type="file" name="image" accept="image/*" required>
+                    <br>
+                    <button type="submit"><i class="fa fa-upload"></i>&nbsp;Upload&nbsp;&amp;&nbsp;Analyze</button>
+                </form>
+            </div>
+        </main>
+    </body>
+    </html>
+    """
+    
+    headers.update({
+        'Content-Type': 'text/html',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    })
+    
+    return (html_content, 200, headers)
+
+def display_error_page(error_message, headers):
+    """Display error page."""
+    html_content = f"""
+    <html><body style="font-family: Arial, sans-serif; text-align: center; margin-top: 100px;">
+    <h1>Weather Image Classifier</h1>
+    <p style="color: red;">Error loading weather data: {error_message}</p>
+    <p>Please check your Cloud Storage bucket and try again.</p>
+    <a href="javascript:location.reload()">Refresh Page</a>
+    </body></html>
+    """
+    
+    headers.update({
+        'Content-Type': 'text/html',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    })
+    
+    return (html_content, 500, headers)
+
+def generate_main_html(image_url, classification, timestamp, image_size, model_used, vertex_location, image_hash):
+    """Generate the main HTML content with cache-busting."""
+    cache_buster = int(time.time())
+    
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Weather Image Classifier</title>
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta http-equiv="Pragma" content="no-cache">
+        <meta http-equiv="Expires" content="0">
+
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;700&display=swap">
+        <script src="https://kit.fontawesome.com/e1d7788428.js" crossorigin="anonymous"></script>
+
+        <style>
+            html, body {{
+                margin: 0;
+                padding: 0;
+                background: #ffffff;
+                font-family: "Raleway", sans-serif;
+            }}
+            main {{
+                max-width: 800px;
+                margin: 80px auto 40px;
+                padding: 0 16px;
+                text-align: center;
+            }}
+            .weather-image {{
+                max-width: 100%;
+                height: auto;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            }}
+            .classification-result {{
+                margin-top: 16px;
+                font-size: 20px;
+                font-weight: 500;
+                color: #333;
+                font-family: "Raleway", sans-serif;
+            }}
+            .timestamp {{
+                margin-top: 6px;
+                font-size: 13px;
+                color: #666;
+            }}
+            .upload-section {{
+                margin-top: 40px;
+                padding: 24px;
+                border: 1px dashed #bbb;
+                border-radius: 8px;
+            }}
+            .upload-section input[type=file] {{
+                margin-bottom: 12px;
+            }}
+            .upload-section button {{
+                background:#007bff;
+                color:#fff;
+                border:none;
+                padding:10px 22px;
+                border-radius:5px;
+                cursor:pointer;
+            }}
+            .upload-section button:hover {{ background:#0069d9; }}
+            .common_navbar {{
+                width: 100%;
+                background-color: black;
+                color: white;
+                padding: 0 16px;
+                z-index: 4;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                height: 44px;
+                font-family: 'Roboto', sans-serif;
+                box-sizing: border-box;
+            }}
+            .common_navbar a {{
+                text-decoration: none;
+                color: white !important;
+                font-family: 'Roboto', sans-serif;
+                font-size: 18px;
+                font-weight: 400;
+                display: flex;
+                align-items: center;
+                white-space: nowrap;
+                line-height: 1;
+            }}
+            .common_navbar a:hover {{ color: #ccc !important; }}
+            .common_navbar i {{
+                margin-right: 5px;
+                font-size: 18px;
+                line-height: 1;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="common_navbar">
+            <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/">
+                <i class="fa-solid fa-magnifying-glass-chart"></i>&nbsp;Interactive&nbsp;Dashboard
+            </a>
+            <a href="https://weather-chat-728445650450.europe-west2.run.app/">
+                <i class="fa-solid fa-comments"></i>&nbsp;Chatbot
+            </a>
+        </div>
+
+        <main>
+            <h1 style="font-weight:600; font-size:32px;">Latest Weather Image</h1>
+
+            <img src="{image_url}" alt="Latest Weather Image" class="weather-image"
+                onerror="this.style.display='none';" />
+
+            <div class="classification-result">
+                Classification: {classification.replace('_',' ').title()}
+            </div>
+
+            <div class="timestamp" id="timestamp-display">Last updated: Unknown</div>
+
+            <div class="upload-section">
+                <h3 style="margin-top:0;">Upload a new photo</h3>
+                <form enctype="multipart/form-data" method="post">
+                    <input type="file" name="image" accept="image/*" required>
+                    <br>
+                    <button type="submit"><i class="fa fa-upload"></i>&nbsp;Upload&nbsp;&amp;&nbsp;Analyze</button>
+                </form>
+            </div>
+        </main>
+
+        <script>
+            // Format timestamp on the client side
+            const timestamp = "{timestamp}";
+            if (timestamp !== "Unknown") {{
+                try {{
+                    const date = new Date(timestamp);
+                    const formatted = date.toLocaleString('en-GB', {{
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour12: false
+                    }}).replace(',', ',');
+                    
+                    document.getElementById('timestamp-display').textContent = `Last updated: ${{formatted}}`;
+                }} catch (e) {{
+                    console.error('Error formatting timestamp:', e);
+                    document.getElementById('timestamp-display').textContent = 'Last updated: Unknown';
+                }}
+            }}
+            
+            // Force image refresh if it fails to load
+            const img = document.querySelector('.weather-image');
+            if (img) {{
+                img.onerror = function() {{
+                    console.log('Image failed to load, trying refresh...');
+                    setTimeout(() => {{
+                        this.src = this.src.split('?')[0] + '?cb=' + new Date().getTime();
+                    }}, 1000);
+                }};
+            }}
+        </script>
+    </body>
+    </html>
+    """
