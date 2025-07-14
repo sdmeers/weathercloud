@@ -246,7 +246,7 @@ app.layout = dbc.Container([
                                 {'label': 'Median', 'value': 'median'},
                                 {'label': 'Maximum', 'value': 'max'}
                             ],
-                            value='median',
+                            value='max',
                             inline=True,
                         ), 
                         width="auto"
@@ -365,8 +365,6 @@ def get_unit(col):
 
 @callback(
     Output('data-store', 'data'),
-    Output('date-picker-range', 'start_date'),
-    Output('date-picker-range', 'end_date'),
     Input('button-today', 'n_clicks'),
     Input('button-week', 'n_clicks'),
     Input('button-month', 'n_clicks'),
@@ -378,9 +376,13 @@ def get_unit(col):
 def update_data_store(btn_today, btn_week, btn_month, btn_year, btn_all, start_date, end_date):
     ctx = dash.callback_context
     if not ctx.triggered:
-        df = get_data("today")
-        if df.empty:
-            df = get_data("latest")
+        df = get_data("last7days")
+        if not df.empty:
+            start_date = df['datetime'].min()
+            end_date = df['datetime'].max()
+        else:
+            start_date = datetime.now() - timedelta(days=7)
+            end_date = datetime.now()
     else:
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
@@ -417,9 +419,27 @@ def update_data_store(btn_today, btn_week, btn_month, btn_year, btn_all, start_d
             df = get_data((start_date, end_date))
 
     if df.empty:
-        return None, start_date.date() if hasattr(start_date, 'date') else start_date, end_date
+        return None
 
-    return df.to_json(date_format='iso'), start_date.date() if hasattr(start_date, 'date') else start_date, end_date
+    return {
+        'df': df.to_json(orient='split'),
+        'start_date': start_date.isoformat(),
+        'end_date': end_date.isoformat()
+    }
+
+@callback(
+    Output('date-picker-range', 'start_date'),
+    Output('date-picker-range', 'end_date'),
+    Input('data-store', 'data')
+)
+def update_date_picker(data):
+    if data is None:
+        raise PreventUpdate
+    
+    start_date = datetime.fromisoformat(data['start_date'])
+    end_date = datetime.fromisoformat(data['end_date'])
+    
+    return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
 
 def get_period(start_date, end_date):
     date_range = pd.to_datetime(end_date) - pd.to_datetime(start_date)
@@ -435,17 +455,15 @@ def get_period(start_date, end_date):
 @callback(
     Output('temperature-bar-chart', 'figure'),
     Input('data-store', 'data'),
-    Input('temperature-radio-items', 'value'),
-    State('date-picker-range', 'start_date'),
-    State('date-picker-range', 'end_date')
+    Input('temperature-radio-items', 'value')
 )
-def update_temperature_bar_chart(data, temp_stat, start_date, end_date):
+def update_temperature_bar_chart(data, temp_stat):
     if data is None:
         return go.Figure().update_layout(title="No data available for selected period")
 
-    df = pd.read_json(data, orient='records')
-    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
-    df['datetime'] = pd.to_datetime(df['datetime'])
+    df = pd.read_json(data['df'], orient='split')
+    start_date = data['start_date']
+    end_date = data['end_date']
     
     period_unit, tickformat, _ = get_period(start_date, end_date)
     
@@ -475,17 +493,15 @@ def update_temperature_bar_chart(data, temp_stat, start_date, end_date):
 
 @callback(
     Output('total-rainfall-bar-chart', 'figure'),
-    Input('data-store', 'data'),
-    State('date-picker-range', 'start_date'),
-    State('date-picker-range', 'end_date')
+    Input('data-store', 'data')
 )
-def update_total_rainfall_bar_chart(data, start_date, end_date):
+def update_total_rainfall_bar_chart(data):
     if data is None:
         return go.Figure().update_layout(title="No data available for selected period")
 
-    df = pd.read_json(data, orient='records')
-    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
-    df['datetime'] = pd.to_datetime(df['datetime'])
+    df = pd.read_json(data['df'], orient='split')
+    start_date = data['start_date']
+    end_date = data['end_date']
 
     period_unit, tickformat, _ = get_period(start_date, end_date)
 
@@ -515,8 +531,7 @@ def update_wind_direction_radar_chart(data):
     if data is None:
         return go.Figure().update_layout(title="No data available for selected period")
 
-    df = pd.read_json(data, orient='records')
-    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    df = pd.read_json(data['df'], orient='split')
     df['wind_direction_converted'] = df['wind_direction'].apply(convert_wind_direction)
     wind_dir_counts = df['wind_direction_converted'].value_counts().reindex(['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']).fillna(0).reset_index()
     wind_dir_counts.columns = ['wind_direction', 'count']
@@ -546,9 +561,7 @@ def update_basic_statistics_table(data):
     if data is None:
         return []
 
-    df = pd.read_json(data, orient='records')
-    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
-    df['datetime'] = pd.to_datetime(df['datetime'])
+    df = pd.read_json(data['df'], orient='split')
     df.set_index('datetime', inplace=True)
 
     max_daily_rainfall = df['rain'].resample('D').sum().max()
@@ -580,17 +593,15 @@ def update_basic_statistics_table(data):
 @callback(
     Output('controls-and-graph', 'figure'),
     Input('data-store', 'data'),
-    Input('controls-and-dropdown', 'value'),
-    State('date-picker-range', 'start_date'),
-    State('date-picker-range', 'end_date')
+    Input('controls-and-dropdown', 'value')
 )
-def update_timeseries_chart(data, col_chosen, start_date, end_date):
+def update_timeseries_chart(data, col_chosen):
     if data is None:
         return go.Figure().update_layout(title="No data available for selected period")
 
-    df = pd.read_json(data, orient='records')
-    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
-    df['datetime'] = pd.to_datetime(df['datetime'])
+    df = pd.read_json(data['df'], orient='split')
+    start_date = data['start_date']
+    end_date = data['end_date']
     
     _, tickformat, rolling_window = get_period(start_date, end_date)
 
@@ -628,17 +639,15 @@ def update_timeseries_chart(data, col_chosen, start_date, end_date):
 @callback(
     Output('boxplot-graph', 'figure'),
     Input('data-store', 'data'),
-    Input('controls-and-dropdown', 'value'),
-    State('date-picker-range', 'start_date'),
-    State('date-picker-range', 'end_date')
+    Input('controls-and-dropdown', 'value')
 )
-def update_boxplot_chart(data, col_chosen, start_date, end_date):
+def update_boxplot_chart(data, col_chosen):
     if data is None:
         return go.Figure().update_layout(title="No data available for selected period")
 
-    df = pd.read_json(data, orient='records')
-    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
-    df['datetime'] = pd.to_datetime(df['datetime'])
+    df = pd.read_json(data['df'], orient='split')
+    start_date = data['start_date']
+    end_date = data['end_date']
 
     period_unit, tickformat, _ = get_period(start_date, end_date)
 
@@ -680,8 +689,7 @@ def update_histogram_kde_chart(data, col_chosen):
     if data is None:
         return go.Figure().update_layout(title="No data available for selected period")
 
-    df = pd.read_json(data, orient='records')
-    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    df = pd.read_json(data['df'], orient='split')
     
     axis_title = f'{col_chosen.capitalize().replace("_", " ")}'
     unit = get_unit(col_chosen)
@@ -726,17 +734,15 @@ def update_histogram_kde_chart(data, col_chosen):
 
 @callback(
     Output('statistics-table', 'data'),
-    Input('data-store', 'data'),
-    State('date-picker-range', 'start_date'),
-    State('date-picker-range', 'end_date')
+    Input('data-store', 'data')
 )
-def update_statistics_table(data, start_date, end_date):
+def update_statistics_table(data):
     if data is None:
         return []
 
-    df = pd.read_json(data, orient='records')
-    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
-    df['datetime'] = pd.to_datetime(df['datetime'])
+    df = pd.read_json(data['df'], orient='split')
+    start_date = data['start_date']
+    end_date = data['end_date']
 
     period_unit, tickformat, _ = get_period(start_date, end_date)
 
