@@ -209,6 +209,7 @@ except Exception as e:
 
 # Define the layout of the app
 app.layout = dbc.Container([
+    dcc.Store(id='data-store'),
     html.Hr(),
     dbc.Row([
        dbc.Col(html.Div("Date range "), width="auto"),
@@ -363,43 +364,23 @@ def get_unit(col):
     return units.get(col, '')
 
 @callback(
+    Output('data-store', 'data'),
     Output('date-picker-range', 'start_date'),
     Output('date-picker-range', 'end_date'),
-    Output('temperature-bar-chart', 'figure'),
-    Output('total-rainfall-bar-chart', 'figure'),
-    Output('wind-direction-radar-chart', 'figure'),
-    Output('basic-statistics-table', 'data'),
-    Output('controls-and-graph', 'figure'),
-    Output('boxplot-graph', 'figure'),
-    Output('statistics-table', 'data'),
-    Output('histogram-kde-graph', 'figure'),
     Input('button-today', 'n_clicks'),
     Input('button-week', 'n_clicks'),
     Input('button-month', 'n_clicks'),
     Input('button-year', 'n_clicks'),
     Input('button-all', 'n_clicks'),
     Input('date-picker-range', 'start_date'),
-    Input('date-picker-range', 'end_date'),
-    Input('controls-and-dropdown', 'value'),
-    Input('temperature-radio-items', 'value')
+    Input('date-picker-range', 'end_date')
 )
-def update_graphs_and_table(btn_today, btn_week, btn_month, btn_year, btn_all, start_date, end_date, col_chosen, temp_stat):
-
-    # Determine which button was clicked
+def update_data_store(btn_today, btn_week, btn_month, btn_year, btn_all, start_date, end_date):
     ctx = dash.callback_context
     if not ctx.triggered:
-        # Default to show today's data on initial load
         df = get_data("today")
         if df.empty:
-            # Fallback to latest available data
             df = get_data("latest")
-        
-        if not df.empty:
-            start_date = df['datetime'].min()
-            end_date = df['datetime'].max()
-        else:
-            start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            end_date = datetime.now()
     else:
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
@@ -429,54 +410,54 @@ def update_graphs_and_table(btn_today, btn_week, btn_month, btn_year, btn_all, s
                 start_date = now - timedelta(days=30)
                 end_date = now
         else:
-            # Use the provided date range if no button was clicked
             start_date = pd.to_datetime(start_date)
             end_date = pd.to_datetime(end_date)
-            
-            # Ensure end_date includes the entire day
             if pd.notna(end_date):
                 end_date = end_date.replace(hour=23, minute=59, second=59)
-            
-            # Fetch data for custom date range
             df = get_data((start_date, end_date))
 
-    # If we don't have data, return empty figures
     if df.empty:
-        empty_fig = go.Figure()
-        empty_fig.update_layout(title="No data available for selected period")
-        return (
-            start_date.date() if hasattr(start_date, 'date') else start_date, 
-            end_date, 
-            empty_fig, empty_fig, empty_fig, [], 
-            empty_fig, empty_fig, [], empty_fig
-        )
+        return None, start_date.date() if hasattr(start_date, 'date') else start_date, end_date
 
-    df['datetime'] = pd.to_datetime(df['datetime'])
+    return df.to_json(date_format='iso'), start_date.date() if hasattr(start_date, 'date') else start_date, end_date
 
-    logging.debug(f"updated graphs start_date: {start_date}, end_date: {end_date}")
-
-    # Determine the granularity for the bar charts and boxplot
+def get_period(start_date, end_date):
     date_range = pd.to_datetime(end_date) - pd.to_datetime(start_date)
     if date_range <= timedelta(days=2):
-        period = df['datetime'].dt.floor('H')
-        tickformat = '%H:%M'
-        rolling_window = 4
+        return 'H', '%H:%M', 4
     elif date_range <= timedelta(days=14):
-        period = df['datetime'].dt.floor('D')
-        tickformat = '%d-%b'
-        rolling_window = 96
+        return 'D', '%d-%b', 96
     elif date_range <= timedelta(days=92):
-        period = df['datetime'].dt.to_period('W').apply(lambda r: r.start_time)
-        tickformat = 'w/c %d-%b'
-        rolling_window = 7 * 96
+        return 'W', 'w/c %d-%b', 7 * 96
     else:
+        return 'M', '%b-%Y', 30 * 96
+
+@callback(
+    Output('temperature-bar-chart', 'figure'),
+    Input('data-store', 'data'),
+    Input('temperature-radio-items', 'value'),
+    State('date-picker-range', 'start_date'),
+    State('date-picker-range', 'end_date')
+)
+def update_temperature_bar_chart(data, temp_stat, start_date, end_date):
+    if data is None:
+        return go.Figure().update_layout(title="No data available for selected period")
+
+    df = pd.read_json(data, orient='records')
+    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    
+    period_unit, tickformat, _ = get_period(start_date, end_date)
+    
+    if period_unit == 'W':
+        period = df['datetime'].dt.to_period('W').apply(lambda r: r.start_time)
+    elif period_unit == 'M':
         period = df['datetime'].dt.to_period('M').apply(lambda r: r.start_time)
-        tickformat = '%b-%Y'
-        rolling_window = 30 * 96
+    else:
+        period = df['datetime'].dt.floor(period_unit)
 
     df['period'] = period
 
-    # Create the temperature bar chart based on selected statistic
     if temp_stat == 'min':
         temp_df = df.groupby('period')['temperature'].min().reset_index()
     elif temp_stat == 'max':
@@ -484,39 +465,69 @@ def update_graphs_and_table(btn_today, btn_week, btn_month, btn_year, btn_all, s
     else:
         temp_df = df.groupby('period')['temperature'].median().reset_index()
 
-    temp_bar_fig = px.bar(temp_df, x='period', y='temperature', title='Temperature', color_discrete_sequence=['black'])
-    temp_bar_fig.update_layout(
+    fig = px.bar(temp_df, x='period', y='temperature', title='Temperature', color_discrete_sequence=['black'])
+    fig.update_layout(
         xaxis_title='', 
         yaxis_title='Temperature (C)',
-        xaxis=dict(
-            tickformat=tickformat,
-            tickangle=-45
-        )
+        xaxis=dict(tickformat=tickformat, tickangle=-45)
     )
+    return fig
 
-    # Create the total rainfall bar chart
+@callback(
+    Output('total-rainfall-bar-chart', 'figure'),
+    Input('data-store', 'data'),
+    State('date-picker-range', 'start_date'),
+    State('date-picker-range', 'end_date')
+)
+def update_total_rainfall_bar_chart(data, start_date, end_date):
+    if data is None:
+        return go.Figure().update_layout(title="No data available for selected period")
+
+    df = pd.read_json(data, orient='records')
+    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    df['datetime'] = pd.to_datetime(df['datetime'])
+
+    period_unit, tickformat, _ = get_period(start_date, end_date)
+
+    if period_unit == 'W':
+        period = df['datetime'].dt.to_period('W').apply(lambda r: r.start_time)
+    elif period_unit == 'M':
+        period = df['datetime'].dt.to_period('M').apply(lambda r: r.start_time)
+    else:
+        period = df['datetime'].dt.floor(period_unit)
+    
+    df['period'] = period
+
     total_rainfall_df = df.groupby('period')['rain'].sum().reset_index()
-    total_rainfall_bar_fig = px.bar(total_rainfall_df, x='period', y='rain', title='Total Rainfall', color_discrete_sequence=['black'])
-    total_rainfall_bar_fig.update_layout(
+    fig = px.bar(total_rainfall_df, x='period', y='rain', title='Total Rainfall', color_discrete_sequence=['black'])
+    fig.update_layout(
         xaxis_title='', 
         yaxis_title='Rainfall (mm)',
-        xaxis=dict(
-            tickformat=tickformat,
-            tickangle=-45
-        )
+        xaxis=dict(tickformat=tickformat, tickangle=-45)
     )
+    return fig
 
-    # Create the wind direction radar chart
+@callback(
+    Output('wind-direction-radar-chart', 'figure'),
+    Input('data-store', 'data')
+)
+def update_wind_direction_radar_chart(data):
+    if data is None:
+        return go.Figure().update_layout(title="No data available for selected period")
+
+    df = pd.read_json(data, orient='records')
+    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
     df['wind_direction_converted'] = df['wind_direction'].apply(convert_wind_direction)
     wind_dir_counts = df['wind_direction_converted'].value_counts().reindex(['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']).fillna(0).reset_index()
     wind_dir_counts.columns = ['wind_direction', 'count']
-    radar_fig = go.Figure(go.Scatterpolar(
+    
+    fig = go.Figure(go.Scatterpolar(
         r=wind_dir_counts['count'],
         theta=wind_dir_counts['wind_direction'],
         fill='toself',
         line=dict(color='black')
     ))
-    radar_fig.update_layout(
+    fig.update_layout(
         title='Wind Direction',
         polar=dict(
             angularaxis=dict(
@@ -525,9 +536,21 @@ def update_graphs_and_table(btn_today, btn_week, btn_month, btn_year, btn_all, s
             )
         )
     )
+    return fig
 
-    # Calculate basic statistics for the overall period
+@callback(
+    Output('basic-statistics-table', 'data'),
+    Input('data-store', 'data')
+)
+def update_basic_statistics_table(data):
+    if data is None:
+        return []
+
+    df = pd.read_json(data, orient='records')
+    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    df['datetime'] = pd.to_datetime(df['datetime'])
     df.set_index('datetime', inplace=True)
+
     max_daily_rainfall = df['rain'].resample('D').sum().max()
 
     basic_statistics = {
@@ -552,57 +575,88 @@ def update_graphs_and_table(btn_today, btn_week, btn_month, btn_year, btn_all, s
             round(df['wind_speed'].max() * 2.23694, 1)
         ]
     }
+    return pd.DataFrame(basic_statistics).to_dict('records')
 
-    basic_statistics_data = pd.DataFrame(basic_statistics).to_dict('records')
+@callback(
+    Output('controls-and-graph', 'figure'),
+    Input('data-store', 'data'),
+    Input('controls-and-dropdown', 'value'),
+    State('date-picker-range', 'start_date'),
+    State('date-picker-range', 'end_date')
+)
+def update_timeseries_chart(data, col_chosen, start_date, end_date):
+    if data is None:
+        return go.Figure().update_layout(title="No data available for selected period")
 
-    # Reset the index to ensure 'datetime' is available for time series figure
-    df.reset_index(inplace=True)
+    df = pd.read_json(data, orient='records')
+    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    
+    _, tickformat, rolling_window = get_period(start_date, end_date)
 
-    # Handle y-axis titles for time series and box plots
     axis_title = f'{col_chosen.capitalize().replace("_", " ")}'
     y_axis_title = f'{axis_title} ({get_unit(col_chosen)})'
     if col_chosen == 'rain_rate':
         y_axis_title = 'Rain Rate (mm/s)'
     elif col_chosen == 'wind_speed':
         y_axis_title = 'Wind Speed (mph)'
-    
-    # Get the appropriate axis titles based on the selected column
-    axis_title = f'{col_chosen.capitalize().replace("_", " ")}'
-    unit = get_unit(col_chosen)
-    xaxis_title = f'{axis_title} ({unit})'
-    yaxis_title = 'Density'
-    
-    # Create the time series figure
-    time_series_fig = go.Figure()
 
-    # Add scatter plot for time series
-    time_series_fig.add_trace(go.Scatter(
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
         x=df['datetime'], 
         y=df[col_chosen] * (3600 if col_chosen == 'rain_rate' else (2.23694 if col_chosen == 'wind_speed' else 1)),
         mode='markers',
         name=axis_title,
         line=dict(color='black')
     ))
-
-    # Add rolling average plot for time series
-    time_series_fig.add_trace(go.Scatter(
+    fig.add_trace(go.Scatter(
         x=df['datetime'],
         y=df[col_chosen].rolling(window=rolling_window).mean() * (3600 if col_chosen == 'rain_rate' else (2.23694 if col_chosen == 'wind_speed' else 1)),
         mode='lines',
         name=f'Rolling Average',
         line=dict(color='red', width=3)
     ))
-
-    time_series_fig.update_layout(
+    fig.update_layout(
         title=f'Time Series of {col_chosen.capitalize().replace("_", " ")} with Rolling Average',
         xaxis_title='',
         yaxis_title=y_axis_title,
         xaxis=dict(tickformat=tickformat),
         showlegend=False
     )
+    return fig
 
-    # Create the boxplot figure using Plotly Express
-    boxplot_fig = px.box(
+@callback(
+    Output('boxplot-graph', 'figure'),
+    Input('data-store', 'data'),
+    Input('controls-and-dropdown', 'value'),
+    State('date-picker-range', 'start_date'),
+    State('date-picker-range', 'end_date')
+)
+def update_boxplot_chart(data, col_chosen, start_date, end_date):
+    if data is None:
+        return go.Figure().update_layout(title="No data available for selected period")
+
+    df = pd.read_json(data, orient='records')
+    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    df['datetime'] = pd.to_datetime(df['datetime'])
+
+    period_unit, tickformat, _ = get_period(start_date, end_date)
+
+    if period_unit == 'W':
+        period = df['datetime'].dt.to_period('W').apply(lambda r: r.start_time)
+    elif period_unit == 'M':
+        period = df['datetime'].dt.to_period('M').apply(lambda r: r.start_time)
+    else:
+        period = df['datetime'].dt.floor(period_unit)
+    df['period'] = period
+
+    y_axis_title = f'{col_chosen.capitalize().replace("_", " ")} ({get_unit(col_chosen)})'
+    if col_chosen == 'rain_rate':
+        y_axis_title = 'Rain Rate (mm/s)'
+    elif col_chosen == 'wind_speed':
+        y_axis_title = 'Wind Speed (mph)'
+
+    fig = px.box(
         df, 
         x='period', 
         y=df[col_chosen] * (3600 if col_chosen == 'rain_rate' else (2.23694 if col_chosen == 'wind_speed' else 1)),
@@ -611,62 +665,89 @@ def update_graphs_and_table(btn_today, btn_week, btn_month, btn_year, btn_all, s
         template=None,
         color_discrete_sequence=['black']
     ).update_layout(showlegend=True)
-    boxplot_fig.update_layout(
+    fig.update_layout(
         xaxis_title='', yaxis_title=y_axis_title,
         xaxis=dict(tickformat=tickformat)
     )
-    
-    histogram_kde_fig = go.Figure()
+    return fig
 
-    # Adjust data for conversion if necessary
+@callback(
+    Output('histogram-kde-graph', 'figure'),
+    Input('data-store', 'data'),
+    Input('controls-and-dropdown', 'value')
+)
+def update_histogram_kde_chart(data, col_chosen):
+    if data is None:
+        return go.Figure().update_layout(title="No data available for selected period")
+
+    df = pd.read_json(data, orient='records')
+    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    
+    axis_title = f'{col_chosen.capitalize().replace("_", " ")}'
+    unit = get_unit(col_chosen)
+    xaxis_title = f'{axis_title} ({unit})'
+    yaxis_title = 'Density'
+
     kde_data = df[col_chosen].copy()
     if col_chosen == 'rain_rate':
         kde_data *= 3600
     elif col_chosen == 'wind_speed':
         kde_data *= 2.23694
 
-    # Add histogram
-    histogram_kde_fig.add_trace(go.Histogram(
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
         x=kde_data,
         nbinsx=30,
         histnorm='probability density',
-        marker=dict(
-            color='black',
-            line=dict(
-                color='black',
-                width=1.5
-            )
-        ),
+        marker=dict(color='black', line=dict(color='black', width=1.5)),
         opacity=0.75,
         name='Histogram'
     ))
 
-    # Calculate KDE
     x_grid = np.linspace(kde_data.min(), kde_data.max(), 1000)
     kde = stats.gaussian_kde(kde_data.dropna())
     kde_y = kde.evaluate(x_grid)
 
-    # Add KDE line
-    histogram_kde_fig.add_trace(go.Scatter(
+    fig.add_trace(go.Scatter(
         x=x_grid,
         y=kde_y,
         mode='lines',
-        line=dict(
-            color='red',
-            width=3
-        ),
+        line=dict(color='red', width=3),
         name='KDE'
     ))
-
-    histogram_kde_fig.update_layout(
+    fig.update_layout(
         title=f'{axis_title} Distribution with KDE',
         xaxis_title=xaxis_title,
         yaxis_title=yaxis_title,
         bargap=0.05,
         showlegend=False
     )
+    return fig
 
-    # Calculate statistics for the summary table
+@callback(
+    Output('statistics-table', 'data'),
+    Input('data-store', 'data'),
+    State('date-picker-range', 'start_date'),
+    State('date-picker-range', 'end_date')
+)
+def update_statistics_table(data, start_date, end_date):
+    if data is None:
+        return []
+
+    df = pd.read_json(data, orient='records')
+    df['datetime'] = pd.to_datetime(df['datetime'], unit='ms')
+    df['datetime'] = pd.to_datetime(df['datetime'])
+
+    period_unit, tickformat, _ = get_period(start_date, end_date)
+
+    if period_unit == 'W':
+        period = df['datetime'].dt.to_period('W').apply(lambda r: r.start_time)
+    elif period_unit == 'M':
+        period = df['datetime'].dt.to_period('M').apply(lambda r: r.start_time)
+    else:
+        period = df['datetime'].dt.floor(period_unit)
+    df['period'] = period
+
     statistics = df.groupby('period').agg(
         median_temperature=('temperature', 'median'),
         min_temperature=('temperature', 'min'),
@@ -677,19 +758,12 @@ def update_graphs_and_table(btn_today, btn_week, btn_month, btn_year, btn_all, s
         avg_luminance=('luminance', 'mean')
     ).reset_index()
 
-    # Format the 'period' column for better readability
     statistics['Period_str'] = statistics['period'].dt.strftime(tickformat)
-
-    # Drop the original period column if it's causing the length mismatch
     statistics = statistics.drop(columns=['period'])
-
-    # Round the statistics to one decimal place
     statistics = statistics.round(1)
 
-    # Adjust the final DataFrame for display
     statistics_data = statistics[['Period_str', 'median_temperature', 'min_temperature', 'max_temperature', 'total_rainfall', 'max_rain_rate', 'peak_windspeed', 'avg_luminance']].to_dict('records')
-
-    # Rename columns for display
+    
     statistics_data = pd.DataFrame(statistics_data).rename(columns={
         "Period_str": "Period", 
         "median_temperature": "Median Temperature (C)", 
@@ -701,13 +775,12 @@ def update_graphs_and_table(btn_today, btn_week, btn_month, btn_year, btn_all, s
         "avg_luminance": "Average Luminance (lux)"
     }).to_dict('records')
 
-    return start_date.date() if hasattr(start_date, 'date') else start_date, end_date, temp_bar_fig, total_rainfall_bar_fig, radar_fig, basic_statistics_data, time_series_fig, boxplot_fig, statistics_data, histogram_kde_fig
+    return statistics_data
 
-server = app.server      # expose Flask app
-application = app.  server     # default Gunicorn target
+server = app.server
+application = app.server
 
-# Run the app
 if __name__ == '__main__':
     import os
-    port = int(os.environ.get('PORT', 8080))
+    port = int(os.environ.get('PORT', 8081))
     app.run_server(debug=False, host='0.0.0.0', port=port)
