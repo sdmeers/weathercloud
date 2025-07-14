@@ -65,7 +65,7 @@ def get_data(query_param):
             CLOUD_FUNCTION_URL,
             json=payload,
             headers={'Content-Type': 'application/json'},
-            timeout=30
+            timeout=60
         )
         
         if response.status_code != 200:
@@ -404,13 +404,14 @@ def update_data_store(btn_today, btn_week, btn_month, btn_year, btn_all, start_d
             start_date = now.replace(month=1, day=1)
             end_date = now
         elif button_id == 'button-all':
-            df = get_data("all")
-            if not df.empty:
-                start_date = df['datetime'].min()
-                end_date = df['datetime'].max()
+            start_date_df = get_data("first")
+            end_date_df = get_data("latest")
+            if not start_date_df.empty and not end_date_df.empty:
+                start_date = pd.to_datetime(start_date_df['datetime'].iloc[0])
+                end_date = pd.to_datetime(end_date_df['datetime'].iloc[0])
+                df = get_data((start_date, end_date))
             else:
-                start_date = now - timedelta(days=30)
-                end_date = now
+                df = pd.DataFrame()
         else:
             start_date = pd.to_datetime(start_date)
             end_date = pd.to_datetime(end_date)
