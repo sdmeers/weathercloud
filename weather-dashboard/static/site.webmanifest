@@ -8,7 +8,7 @@
   "theme_color": "#FFFFFF",
   "icons": [
     {
-      "src": "/static/android-chrome-192x192.png",
+      "src": "/static/weather_icon_padded.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
