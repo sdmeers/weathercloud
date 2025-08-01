@@ -8,6 +8,7 @@ from google.cloud import firestore
 # --- Configuration ---
 # It is recommended to set the GOOGLE_APPLICATION_CREDENTIALS environment variable
 # to point to your service account key file.
+# Run "gcloud auth application-default login" to authenticate
 # If you are running this on a GCP environment (like Cloud Shell or a VM),
 # the client can often authenticate automatically without this.
 
