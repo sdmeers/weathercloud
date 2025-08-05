@@ -8,8 +8,8 @@ from google.cloud import firestore
 
 # 1. Set the date and time range for the update.
 # Format: 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD'. The range is inclusive.
-START_DATE_STR = '2025-07-30 00:00'
-END_DATE_STR = '2025-07-30 23:59'
+START_DATE_STR = '2025-08-04 17:45'
+END_DATE_STR = '2025-08-05 08:00'
 
 # 2. List the parameters (fields) you want to adjust in the database.
 # Example: ['rain', 'rain_rate'] or ['temperature']
@@ -23,7 +23,7 @@ OPERATION_TYPE = 'SET'
 
 # 4. Set the value to be used in the operation.
 # For 'SET', this is the new value. For 'MODIFY', this is the amount to add/subtract.
-OPERATION_VALUE = 0
+OPERATION_VALUE = 0.0
 
 # --- End of User Configuration ---
 
