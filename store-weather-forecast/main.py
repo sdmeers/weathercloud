@@ -1,7 +1,7 @@
 
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import requests
 from google.cloud import firestore
 from flask import Request, jsonify
@@ -21,10 +21,10 @@ LATITUDE = os.environ.get('LATITUDE')
 LONGITUDE = os.environ.get('LONGITUDE')
 
 # API Endpoint
-API_URL = f"https://datahub.metoffice.gov.uk/sitespecific/v0/point/hourly?latitude={LATITUDE}&longitude={LONGITUDE}"
+API_URL = f"https://data.hub.api.metoffice.gov.uk/sitespecific/v0/point/hourly?dataSource=BD1&latitude={LATITUDE}&longitude={LONGITUDE}"
 
 # --- Entry Point: get_and_store_forecast ---
-def get_and_store_forecast(request: Request):
+def store_weather_forecast(request: Request):
     """
     Cloud Function triggered by Cloud Scheduler to fetch the next 24-hour
     weather forecast and store it in Firestore.
@@ -75,9 +75,16 @@ def get_and_store_forecast(request: Request):
         time_series = api_data['features'][0]['properties']['timeSeries']
         processed_forecasts = []
 
+        fetch_time = datetime.now(timezone.utc)
+        limit_time = fetch_time + timedelta(hours=24)
+
         for entry in time_series:
             # Convert time string to datetime object
             forecast_time = datetime.fromisoformat(entry['time'].replace('Z', '+00:00'))
+
+            # Stop if the forecast time is beyond our 24-hour window
+            if forecast_time > limit_time:
+                break
 
             # Convert pressure from Pascals to hPa/millibars
             pressure_hpa = entry['mslp'] / 100.0 if 'mslp' in entry else None
@@ -92,28 +99,34 @@ def get_and_store_forecast(request: Request):
             })
 
         # Prepare document for Firestore
-        fetch_time = datetime.now(timezone.utc)
         doc_id = f"forecast_{fetch_time.strftime('%Y-%m-%d')}"
 
+        # Prepare hourly forecasts as fields for the main document
+        hourly_fields = {}
+        for hourly_forecast in processed_forecasts:
+            field_name = hourly_forecast['time'].strftime('forecast-%Y-%m-%d-%H')
+            hourly_fields[field_name] = hourly_forecast
+
+        # Prepare the main document for Firestore
         forecast_document = {
             'fetch_timestamp_utc': fetch_time,
             'latitude': float(LATITUDE),
             'longitude': float(LONGITUDE),
-            'forecast_hours': processed_forecasts
+            **hourly_fields # Unpack the hourly forecasts as fields
         }
 
         # --- Store in Firestore ---
         collection_ref = db.collection('weather-forecast')
-        doc_ref = collection_ref.document(doc_id)
+        doc_ref = collection_ref.document(doc_id) # doc_id is already 'forecast_YYYY-MM-DD'
         doc_ref.set(forecast_document)
 
-        logging.info(f"Successfully stored weather forecast with ID: {doc_id}")
+        logging.info(f"Successfully stored weather forecast for {doc_id} with {len(processed_forecasts)} hourly fields.")
 
         return jsonify({
             'status': 'success',
-            'message': 'Weather forecast stored successfully',
+            'message': f"Weather forecast stored successfully for {doc_id} with {len(processed_forecasts)} hourly fields",
             'document_id': doc_id,
-            'forecasts_processed': len(processed_forecasts)
+            'hourly_fields_stored': len(processed_forecasts)
         }), 200, headers
 
     except (KeyError, IndexError, TypeError) as e:
