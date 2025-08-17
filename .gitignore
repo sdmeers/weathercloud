@@ -3,3 +3,4 @@ notes
 copy_weather_data.py
 kill-switch/reenable_account_command.txt
 weather-image-classifier/*.jpg
+store-weather-forecast/local
