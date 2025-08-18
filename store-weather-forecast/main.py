@@ -2,6 +2,7 @@
 import os
 import logging
 from datetime import datetime, timezone, timedelta
+from dateutil import tz
 import requests
 from google.cloud import firestore
 from flask import Request, jsonify
@@ -99,35 +100,28 @@ def store_weather_forecast(request: Request):
                 'wind_speed': entry.get('windSpeed10m')
             })
 
-        # Prepare document for Firestore
-        doc_id = f"forecast_{fetch_time.strftime('%Y-%m-%d')}"
+        # --- Store individual hourly forecasts in the 'weather-forecasts' collection ---
+        collection_ref = db.collection('weather-forecasts')
+        LONDON_TZ = tz.gettz('Europe/London') # Define London timezone
 
-        # Prepare hourly forecasts as fields for the main document
-        hourly_fields = {}
         for hourly_forecast in processed_forecasts:
-            field_name = hourly_forecast['time'].strftime('forecast-%Y-%m-%d-%H')
-            hourly_fields[field_name] = hourly_forecast
+            # The 'time' field from the forecast is already a UTC datetime object
+            utc_time = hourly_forecast['time']
 
-        # Prepare the main document for Firestore
-        forecast_document = {
-            'fetch_timestamp_utc': fetch_time,
-            'latitude': float(LATITUDE),
-            'longitude': float(LONGITUDE),
-            **hourly_fields # Unpack the hourly forecasts as fields
-        }
+            # Convert to London time to create a UK-friendly document ID
+            local_time = utc_time.astimezone(LONDON_TZ)
+            doc_id = local_time.strftime('%Y-%m-%d-%H')
 
-        # --- Store in Firestore ---
-        collection_ref = db.collection('weather-forecast')
-        doc_ref = collection_ref.document(doc_id) # doc_id is already 'forecast_YYYY-MM-DD'
-        doc_ref.set(forecast_document)
+            # Store the document using the localized ID
+            # The data within the document still contains the original UTC timestamp
+            collection_ref.document(doc_id).set(hourly_forecast)
 
-        logging.info(f"Successfully stored weather forecast for {doc_id} with {len(processed_forecasts)} hourly fields.")
+        logging.info(f"Successfully stored {len(processed_forecasts)} individual hourly forecasts in 'weather-forecasts'.")
 
         return jsonify({
             'status': 'success',
-            'message': f"Weather forecast stored successfully for {doc_id} with {len(processed_forecasts)} hourly fields",
-            'document_id': doc_id,
-            'hourly_fields_stored': len(processed_forecasts)
+            'message': f"Stored {len(processed_forecasts)} hourly forecasts successfully.",
+            'hourly_forecasts_stored': len(processed_forecasts)
         }), 200, headers
 
     except (KeyError, IndexError, TypeError) as e:
