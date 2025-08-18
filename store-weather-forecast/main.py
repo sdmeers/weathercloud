@@ -95,7 +95,8 @@ def store_weather_forecast(request: Request):
                 'humidity': entry.get('screenRelativeHumidity'),
                 'pressure': pressure_hpa,
                 'rain_total': entry.get('totalPrecipAmount'),
-                'prob_of_rain': entry.get('probOfPrecipitation')
+                'prob_of_rain': entry.get('probOfPrecipitation'),
+                'wind_speed': entry.get('windSpeed10m')
             })
 
         # Prepare document for Firestore
