@@ -99,7 +99,7 @@ ENVIRONMENT
 
 COPYRIGHT
     © 2025 Steven Meers. MIT License.
-"
+"""
 
 import json
 import logging
