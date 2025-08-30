@@ -28,6 +28,7 @@ body {
     display: flex;
     align-items: center;
 }
+
 .common_navbar a:hover {
         color: #ccc !important;
 }
@@ -48,4 +49,60 @@ body {
 .dash-debug-menu--closed, 
 .dash-debug-menu__outer {
     display: none !important;
+}
+
+/* New Hamburger Menu Styles */
+.hamburger-button {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.navbar-title {
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.sidenav {
+    height: 100%;
+    width: 200px; /* Default width for mobile */
+    position: fixed;
+    z-index: 5;
+    top: 0;
+    left: 0;
+    background-color: #111;
+    overflow-x: hidden;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+    padding-top: 60px;
+}
+
+/* On screens wider than 600px, make the sidenav wider */
+@media screen and (min-width: 600px) {
+    .sidenav {
+        width: 280px;
+    }
+}
+
+.sidenav-open {
+    transform: translateX(0);
+}
+
+.sidenav a {
+    padding: 10px 15px;
+    text-decoration: none;
+    font-size: 18px;
+    color: #818181;
+    display: block;
+    transition: 0.3s;
+}
+
+.sidenav a:hover {
+    color: #f1f1f1;
+}
+
+.sidenav .fa-fw {
+    margin-right: 8px;
 }
