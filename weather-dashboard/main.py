@@ -296,6 +296,8 @@ def home():
     year = get_weather_data_from_cloud_function("year", fields=annual_summary_fields)
 
     vars = {
+        "page_title": "Weather Summary",
+        "page_icon": "fa-solid fa-dashboard",
         "time_of_latest_reading": "N/A",
         "latest_temperature":     "N/A",
         "latest_humidity":        "N/A",

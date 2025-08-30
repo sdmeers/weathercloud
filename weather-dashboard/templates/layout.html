@@ -61,7 +61,7 @@ html, body {
   <button class="hamburger-button" id="hamburger-btn">
     <i class="fa fa-bars"></i>
   </button>
-  <span class="navbar-title"><i class="fa-solid fa-cloud-sun-rain"></i> Weather Station</span>
+  <span class="navbar-title"><i class="{{ page_icon | default('fa-solid fa-cloud-sun-rain') }} fa-fw"></i> {{ page_title | default('Weather Station') }}</span>
 </div>
 
 <!-- !PAGE CONTENT! -->
