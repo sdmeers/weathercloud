@@ -249,7 +249,7 @@ st.markdown("""
         overflow-x: hidden;
     }
     
-    /* Common navbar styles - MUST come before the general overrides */
+    /* --- CSS-Only Hamburger Menu --- */
     .common_navbar {
         width: 100vw !important;
         overflow: hidden;
@@ -268,57 +268,75 @@ st.markdown("""
         height: 44px;
         box-sizing: border-box;
     }
-    .common_navbar a {
-        text-decoration: none;
-        color: white !important;
-        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif !important;
-        font-size: 18px;
-        font-weight: 400;
+    .hamburger-button { background: none; border: none; color: white; font-size: 22px; cursor: pointer; }
+    .navbar-title { font-size: 18px; font-weight: 400; color: white !important; }
+    .navbar-title i { margin-right: 8px; }
+    .sidenav {
+        height: 100%;
+        width: 200px;
+        position: fixed;
+        z-index: 10000;
+        top: 0;
+        left: 0;
+        background-color: #111;
+        overflow-x: hidden;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease-in-out;
+    }
+    #hamburger-toggle {
+        display: none;
+    }
+    #hamburger-toggle:checked ~ .sidenav {
+        transform: translateX(0);
+    }
+    @media screen and (min-width: 600px) {
+        .sidenav {
+            width: 280px;
+        }
+    }
+    .sidenav-header {
         display: flex;
+        justify-content: space-between;
         align-items: center;
+        padding: 10px 20px;
+        border-bottom: 1px solid #444;
+        min-height: 44px;
     }
-    .common_navbar a:hover {
-        color: #ccc !important;
+    .sidenav-title { color: white; font-size: 20px; margin: 0; font-weight: 500; }
+    .close-btn { background: none; border: none; color: #818181; font-size: 22px; cursor: pointer; }
+    .close-btn:hover { color: #f1f1f1; }
+    .sidenav a {
+        padding: 10px 15px 10px 20px;
+        text-decoration: none;
+        font-size: 18px;
+        color: #818181 !important;
+        display: block;
+        transition: 0.3s;
+        text-align: left;
     }
-    .common_navbar i {
-        margin-right: 5px;
-        color: white !important;
-    }
+    .sidenav a:hover { color: #f1f1f1 !important; }
+    .sidenav .fa-fw { margin-right: 8px; }
     
-    .center-table {
-        margin-left: auto;
-        margin-right: auto;
-        width: 50%;
-    }
-
-    /* Hide default Streamlit UI elements */
-    header[data-testid="stHeader"],
-    .stDeployButton,
-    div[data-testid="stToolbar"],
-    .viewerBadge_link__1S137,
-    .stStatus,
-    div[data-testid="stStatusWidget"],
-    .stApp > footer,
-    .stSidebar,
-    section[data-testid="stSidebar"] {
+    /* --- Streamlit Overrides --- */
+    header[data-testid="stHeader"], .stDeployButton, div[data-testid="stToolbar"], .viewerBadge_link__1S137, .stStatus, div[data-testid="stStatusWidget"], .stApp > footer, .stSidebar, section[data-testid="stSidebar"] {
         display: none !important;
     }
-
-    /* FORCE WHITE BACKGROUND EVERYWHERE EXCEPT NAV */
-    html, body, .stApp, .main, section, 
-    div[data-testid="stAppViewContainer"],
-    div[data-testid="stMain"],
-    div[data-testid="stBottom"],
-    div[data-testid="stChatFloatingInputContainer"] {
+    html, body, .stApp, .main, section, div[data-testid="stAppViewContainer"], div[data-testid="stMain"], div[data-testid="stBottom"], div[data-testid="stChatFloatingInputContainer"] {
         background-color: white !important;
         color: black !important;
         font-family: "Roboto", sans-serif !important;
     }
-    
-    /* Apply white background to divs but exclude navbar */
-    div:not(.common_navbar) {
+    div:not(.common_navbar):not(.sidenav) {
         background-color: white !important;
         color: black !important;
+    }
+    /* Final override for sidenav header */
+    nav.sidenav > .sidenav-header, nav.sidenav > .sidenav-header > * {
+        background-color: #111 !important;
+        color: white !important;
+    }
+    nav.sidenav > .sidenav-header > .close-btn {
+        color: #818181 !important;
     }
 
     .block-container {
@@ -328,94 +346,36 @@ st.markdown("""
         max-width: 800px;
         margin: 0 auto;
     }
-
-    /* Title styling */
-    .stApp h1 {
-        color: black !important;
-        font-family: "Roboto", sans-serif !important;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-
-    /* Chat messages */
-    div[data-testid="stChatMessage"] {
-        background-color: white !important;
-        color: black !important;
-        border: none !important;
-        margin-bottom: 1rem;
-    }
-
-    div[data-testid="stChatMessage"] * {
-        background-color: transparent !important;
-        color: black !important;
-    }
-
-    /* SIMPLE CHAT INPUT STYLING */
-    div[data-testid="stChatInput"] {
-        background-color: #f8f9fa !important;
-        border: 2px solid #dee2e6 !important;
-        border-radius: 25px !important;
-        max-width: 600px !important;
-        margin: 0 auto !important;
-        padding: 0 !important;
-        display: flex !important;
-        align-items: center !important;
-    }
-
-    div[data-testid="stChatInput"] {
-        background-color: #f8f9fa !important;
-        border: 2px solid #dee2e6 !important;
-        border-radius: 25px !important;
-        max-width: 600px !important;
-        margin: 0 auto !important;
-        padding: 3px !important;                  /* Small padding instead of 0 */
-        display: flex !important;
-        align-items: center !important;
-        overflow: hidden !important;              /* Ensures no overflow */
-    }
-
-    div[data-testid="stChatInput"] textarea::placeholder {
-        color: #6c757d !important;
-    }
-            
-    div[data-testid="stChatInput"] textarea {
-    color: #212529 !important;
-        caret-color: #212529 !important;          /* Ensures cursor is visible too */
-    }
-
-    div[data-testid="stChatInput"] textarea:focus {
-        color: #212529 !important;
-    }
-
-    /* FIXED SEND BUTTON SIZING */
-    button[data-testid="stChatInputSubmitButton"] {
-        background-color: #007bff !important;
-        border: none !important;
-        border-radius: 50% !important;
-        width: 30px !important;                   /* Smaller button */
-        height: 30px !important;                  /* Smaller button */
-        margin: 5px 8px !important;               /* Reduce margins */
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        flex-shrink: 0 !important;
-    }
-
-    button[data-testid="stChatInputSubmitButton"] svg {
-        color: white !important;
-        width: 16px !important;
-        height: 16px !important;
-    }
-
-    /* Ensure all text is visible - but exclude navbar */
-    .stMarkdown:not(.common_navbar), .stText, p:not(.common_navbar p), span:not(.common_navbar span) {
-        color: black !important;
-    }
+    .stApp h1 { color: black !important; font-family: "Roboto", sans-serif !important; text-align: center; margin-bottom: 2rem; }
+    div[data-testid="stChatMessage"] { background-color: white !important; color: black !important; border: none !important; margin-bottom: 1rem; }
+    div[data-testid="stChatMessage"] * { background-color: transparent !important; color: black !important; }
+    div[data-testid="stChatInput"] { background-color: #f8f9fa !important; border: 2px solid #dee2e6 !important; border-radius: 25px !important; max-width: 600px !important; margin: 0 auto !important; padding: 3px !important; display: flex !important; align-items: center !important; overflow: hidden !important; }
+    div[data-testid="stChatInput"] textarea::placeholder { color: #6c757d !important; }
+    div[data-testid="stChatInput"] textarea { color: #212529 !important; caret-color: #212529 !important; }
+    div[data-testid="stChatInput"] textarea:focus { color: #212529 !important; }
+    button[data-testid="stChatInputSubmitButton"] { background-color: #007bff !important; border: none !important; border-radius: 50% !important; width: 30px !important; height: 30px !important; margin: 5px 8px !important; display: flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important; }
+    button[data-testid="stChatInputSubmitButton"] svg { color: white !important; width: 16px !important; height: 16px !important; }
+    .stMarkdown:not(.common_navbar), .stText, p:not(.common_navbar p), span:not(.common_navbar span) { color: black !important; }
 </style>
 
+<input type="checkbox" id="hamburger-toggle">
+<nav class="sidenav" id="mySidenav">
+  <div class="sidenav-header">
+    <h4 class="sidenav-title">Navigation</h4>
+    <label for="hamburger-toggle" class="close-btn"><i class="fa-solid fa-xmark"></i></label>
+  </div>
+  <a href="https://weather-dashboard-728445650450.europe-west2.run.app/"><i class="fa-solid fa-dashboard fa-fw"></i>  Summary</a>
+  <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/"><i class="fa-solid fa-magnifying-glass-chart fa-fw"></i>  Dashboard</a>
+  <a href="https://weather-chat-728445650450.europe-west2.run.app/"><i class="fa-solid fa-comments fa-fw"></i>  Chatbot</a>
+  <a href="https://display-weather-data-728445650450.europe-west2.run.app/"><i class="fa-solid fa-database fa-fw"></i>  Data</a>
+  <a href="https://europe-west1-weathercloud-460719.cloudfunctions.net/weather-image-classifier"><i class="fa-solid fa-camera-retro fa-fw"></i>  Image Classifier</a>
+</nav>
+
 <div class="common_navbar">
-  <a href="https://weather-dashboard-728445650450.europe-west2.run.app/"><i class="fa-solid fa-dashboard"></i>Weather Summary</a>
-  <a href="https://display-weather-data-728445650450.europe-west2.run.app/"><i class="fa-solid fa-database"></i>View Data</a>
+  <label for="hamburger-toggle" class="hamburger-button" id="hamburger-btn">
+    <i class="fa fa-bars"></i>
+  </label>
+  <span class="navbar-title"><i class="fa-solid fa-comments fa-fw"></i> Chatbot</span>
 </div>
  
 """, unsafe_allow_html=True)
