@@ -189,7 +189,7 @@ def display_weather_data(request):
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Raspberry Pi Weather Log</title>
+            <title>Weather Data Log</title>
             <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
             <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -201,16 +201,18 @@ def display_weather_data(request):
                     line-height: 1.5;
                     overflow-x: hidden;
                     background-color: white;
-                    padding-top: 60px; /* Account for fixed navbar */
                 }}
-                
+                .w3-main {{
+                    padding-top: 44px; /* Account for fixed navbar */
+                }}
+                /* --- Start of new navbar CSS --- */
                 .common_navbar {{
                     width: 100%;
                     overflow: hidden;
                     background-color: black;
                     color: white;
                     padding: 8px 16px;
-                    z-index: 4;
+                    z-index: 1001;
                     position: fixed;
                     top: 0;
                     display: flex;
@@ -218,137 +220,140 @@ def display_weather_data(request):
                     align-items: center;
                     height: 44px;
                 }}
-                
-                .common_navbar a {{
-                    text-decoration: none;
-                    color: white !important;
-                    font-family: 'Roboto', sans-serif;
-                    font-size: 18px;
-                    font-weight: 400;
+                .hamburger-button {{ background: none; border: none; color: white; font-size: 22px; cursor: pointer; }}
+                .navbar-title {{ font-size: 18px; font-weight: 400; }}
+                .navbar-title i {{ margin-right: 8px; }}
+                .sidenav {{
+                    height: 100%;
+                    width: 200px;
+                    position: fixed;
+                    z-index: 1002;
+                    top: 0;
+                    left: 0;
+                    background-color: #111;
+                    overflow-x: hidden;
+                    transform: translateX(-100%);
+                    transition: transform 0.3s ease-in-out;
+                }}
+                @media screen and (min-width: 600px) {{
+                    .sidenav {{
+                        width: 280px;
+                    }}
+                }}
+                .sidenav-open {{ transform: translateX(0); }}
+                .sidenav-header {{
                     display: flex;
+                    justify-content: space-between;
                     align-items: center;
+                    padding: 10px 20px;
+                    border-bottom: 1px solid #444;
+                    min-height: 44px;
                 }}
-                
-                .common_navbar a:hover {{
-                    color: #ccc !important;
+                .sidenav-title {{ color: white; font-size: 20px; margin: 0; font-weight: 500; }}
+                .close-btn {{ background: none; border: none; color: #818181; font-size: 22px; cursor: pointer; }}
+                .close-btn:hover {{ color: #f1f1f1; }}
+                .sidenav a {{
+                    padding: 10px 15px 10px 20px;
+                    text-decoration: none;
+                    font-size: 18px;
+                    color: #818181;
+                    display: block;
+                    transition: 0.3s;
+                    text-align: left;
                 }}
-                
-                .common_navbar i {{
-                    margin-right: 5px;
-                }}
-                
-                table {{ 
-                    width: 100%; 
-                    border-collapse: collapse; 
-                    margin-top: 20px; 
-                    border-radius: 8px; 
-                    overflow: hidden; 
-                }}
-                
-                th, td {{ 
-                    border: 1px solid #ddd; 
-                    padding: 12px; 
-                    text-align: left; 
-                }}
-                
-                th {{ 
-                    background-color: #f2f2f2; 
-                    font-weight: bold; 
-                }}
-                
-                tr:nth-child(even) {{ 
-                    background-color: #f9f9f9; 
-                }}
-                
-                tr:hover {{ 
-                    background-color: #f1f1f1; 
-                }}
-                
-                .container {{ 
-                    margin-top: 20px; 
-                    padding: 20px; 
-                }}
-                
-                h1 {{ 
-                    margin-bottom: 20px; 
-                    color: #333; 
-                    display: inline-block; 
-                    vertical-align: middle; 
-                }}
-                
-                .pagination-top {{ 
-                    margin-left: 20px; 
-                    display: inline-block; 
-                    vertical-align: middle; 
-                }}
-                
-                .pagination-bottom {{ 
-                    margin-top: 20px; 
-                    text-align: center; 
-                    display: flex; 
-                    justify-content: center; 
-                    gap: 10px; 
-                }}
-                
-                .w3-button {{ 
-                    border-radius: 8px; 
-                    padding: 10px 20px; 
-                    transition: background-color 0.3s ease; 
-                }}
-                
-                .w3-button:hover {{ 
-                    background-color: #555 !important; 
-                }}
-                
-                .dash-spinner, 
-                ._dash-loading-spinner, 
-                .dash-loading, 
-                .dash-spinner-container, 
-                .dash-spinner__svg, 
-                .dash-debug-menu, 
-                .dash-debug-menu--closed, 
-                .dash-debug-menu__outer {{
-                    display: none !important;
-                }}
+                .sidenav a:hover {{ color: #f1f1f1; }}
+                .sidenav .fa-fw {{ margin-right: 8px; }}
+                /* --- End of new navbar CSS --- */
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; border-radius: 8px; overflow: hidden; }}
+                th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+                th {{ background-color: #f2f2f2; font-weight: bold; }}
+                tr:nth-child(even) {{ background-color: #f9f9f9; }}
+                tr:hover {{ background-color: #f1f1f1; }}
+                .container {{ margin-top: 20px; padding: 20px; }}
+                h1 {{ margin-bottom: 20px; color: #333; display: inline-block; vertical-align: middle; }}
+                .pagination-top {{ margin-left: 20px; display: inline-block; vertical-align: middle; }}
+                .pagination-bottom {{ margin-top: 20px; text-align: center; display: flex; justify-content: center; gap: 10px; }}
+                .w3-button {{ border-radius: 8px; padding: 10px 20px; transition: background-color 0.3s ease; }}
+                .w3-button:hover {{ background-color: #555 !important; }}
             </style>
         </head>
         <body>
+            <!-- Sidenav/menu -->
+            <nav class="sidenav" id="mySidenav">
+              <div class="sidenav-header">
+                <h4 class="sidenav-title">Navigation</h4>
+                <button class="close-btn" id="close-sidenav-btn"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <a href="https://weather-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-dashboard fa-fw"></i>  Summary</a>
+              <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-magnifying-glass-chart fa-fw"></i>  Dashboard</a>
+              <a href="https://weather-chat-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-comments fa-fw"></i>  Chatbot</a>
+              <a href="https://display-weather-data-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-database fa-fw"></i>  Data</a>
+              <a href="https://europe-west1-weathercloud-460719.cloudfunctions.net/weather-image-classifier" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-camera-retro fa-fw"></i>  Image Classifier</a>
+            </nav>
+
+            <!-- Top container -->
             <div class="common_navbar">
-                <a href="{dashboard_URL}"><i class="fa-solid fa-dashboard"></i>Interactive Dashboard</a>
-                <a href="{chat_URL}"><i class="fa-solid fa-comments"></i>Chatbot</a>
+              <button class="hamburger-button" id="hamburger-btn">
+                <i class="fa fa-bars"></i>
+              </button>
+              <span class="navbar-title"><i class="fa-solid fa-database fa-fw"></i> Weather Data</span>
             </div>
 
-            <div class="w3-container container">
-                <h1>Raspberry Pi Weather Log</h1>
-                <div class="pagination-top">
-                    {pagination_links}
-                </div>
+            <div class="w3-main">
+                <div class="w3-container container">
+                    <h1>Raspberry Pi Weather Log</h1>
+                    <div class="pagination-top">
+                        {pagination_links}
+                    </div>
 
-                <div class="w3-responsive w3-card-4" style="border-radius: 8px;">
-                    <table class="w3-table w3-striped w3-bordered">
-                        <thead>
-                            <tr>
-                                <th>Timestamp (local)</th>
-                                <th>Temperature (C)</th>
-                                <th>Pressure (hPa)</th>
-                                <th>Humidity (%)</th>
-                                <th>Rain (mm)</th>
-                                <th>Rain rate (mm/hr)</th>
-                                <th>Luminance (lux)</th>
-                                <th>Wind Speed (mph)</th>
-                                <th>Wind Direction</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {"".join(weather_data_rows)}
-                        </tbody>
-                    </table>
-                </div>
+                    <div class="w3-responsive w3-card-4" style="border-radius: 8px;">
+                        <table class="w3-table w3-striped w3-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp (local)</th>
+                                    <th>Temperature (C)</th>
+                                    <th>Pressure (hPa)</th>
+                                    <th>Humidity (%)</th>
+                                    <th>Rain (mm)</th>
+                                    <th>Rain rate (mm/hr)</th>
+                                    <th>Luminance (lux)</th>
+                                    <th>Wind Speed (mph)</th>
+                                    <th>Wind Direction</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {"".join(weather_data_rows)}
+                            </tbody>
+                        </table>
+                    </div>
 
-                <div class="pagination-bottom">
-                    {pagination_links}
+                    <div class="pagination-bottom">
+                        {pagination_links}
+                    </div>
                 </div>
             </div>
+
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {{
+                const hamburgerBtn = document.getElementById('hamburger-btn');
+                const sidenav = document.getElementById('mySidenav');
+                const closeSidenavBtn = document.getElementById('close-sidenav-btn');
+
+                hamburgerBtn.addEventListener('click', function() {{
+                    sidenav.classList.add('sidenav-open');
+                }});
+
+                closeSidenavBtn.addEventListener('click', function() {{
+                    sidenav.classList.remove('sidenav-open');
+                }});
+
+                document.addEventListener('click', function(event) {{
+                    if (!sidenav.contains(event.target) && !hamburgerBtn.contains(event.target)) {{
+                        sidenav.classList.remove('sidenav-open');
+                    }}
+                }});
+            }});
+            </script>
         </body>
         </html>
         """
