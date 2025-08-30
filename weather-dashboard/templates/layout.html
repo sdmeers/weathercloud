@@ -45,11 +45,15 @@ html, body {
 
 <!-- Sidenav/menu -->
 <nav class="sidenav" id="mySidenav">
-  <a href="/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-summary fa-fw"></i>  Summary</a>
+  <div class="sidenav-header">
+    <h4 class="sidenav-title">Navigation</h4>
+    <button class="close-btn" id="close-sidenav-btn"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <a href="https://weather-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-dashboard fa-fw"></i>  Summary</a>
   <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-magnifying-glass-chart fa-fw"></i>  Dashboard</a>
   <a href="https://weather-chat-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-comments fa-fw"></i>  Chatbot</a>
-  <a href="#" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-database fa-fw"></i>  Data</a>
-  <a href="#" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-camera-retro fa-fw"></i>  Image Classifier</a>
+  <a href="https://display-weather-data-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-database fa-fw"></i>  Data</a>
+  <a href="https://europe-west1-weathercloud-460719.cloudfunctions.net/weather-image-classifier" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-camera-retro fa-fw"></i>  Image Classifier</a>
 </nav>
 
 <!-- Top container -->
@@ -57,7 +61,7 @@ html, body {
   <button class="hamburger-button" id="hamburger-btn">
     <i class="fa fa-bars"></i>
   </button>
-  <span class="navbar-title">Meersy Weather Station</span>
+  <span class="navbar-title"><i class="fa-solid fa-cloud-sun-rain"></i> Weather Station</span>
 </div>
 
 <!-- !PAGE CONTENT! -->
@@ -72,13 +76,19 @@ html, body {
 document.addEventListener('DOMContentLoaded', function() {
     const hamburgerBtn = document.getElementById('hamburger-btn');
     const sidenav = document.getElementById('mySidenav');
+    const closeSidenavBtn = document.getElementById('close-sidenav-btn');
 
     hamburgerBtn.addEventListener('click', function() {
-        sidenav.classList.toggle('sidenav-open');
+        sidenav.classList.add('sidenav-open');
     });
 
-    // Optional: Close the sidenav when clicking outside of it
+    closeSidenavBtn.addEventListener('click', function() {
+        sidenav.classList.remove('sidenav-open');
+    });
+
+    // Close the sidenav when clicking outside of it
     document.addEventListener('click', function(event) {
+        // Check if the click is outside the sidenav and not on the hamburger button
         if (!sidenav.contains(event.target) && !hamburgerBtn.contains(event.target)) {
             sidenav.classList.remove('sidenav-open');
         }
