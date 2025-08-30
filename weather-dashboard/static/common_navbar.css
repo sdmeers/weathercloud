@@ -65,6 +65,10 @@ body {
     font-weight: 500;
 }
 
+.navbar-title i {
+    margin-right: 8px;
+}
+
 .sidenav {
     height: 100%;
     width: 200px; /* Default width for mobile */
@@ -76,7 +80,6 @@ body {
     overflow-x: hidden;
     transform: translateX(-100%);
     transition: transform 0.3s ease-in-out;
-    padding-top: 60px;
 }
 
 /* On screens wider than 600px, make the sidenav wider */
@@ -90,13 +93,42 @@ body {
     transform: translateX(0);
 }
 
+.sidenav-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    border-bottom: 1px solid #444;
+    min-height: 44px; /* Match navbar height */
+}
+
+.sidenav-title {
+    color: white;
+    font-size: 20px;
+    margin: 0;
+    font-weight: 500;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #818181;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.close-btn:hover {
+    color: #f1f1f1;
+}
+
 .sidenav a {
-    padding: 10px 15px;
+    padding: 10px 15px 10px 20px;
     text-decoration: none;
     font-size: 18px;
     color: #818181;
     display: block;
     transition: 0.3s;
+    text-align: left; /* Ensure text is left-aligned */
 }
 
 .sidenav a:hover {
