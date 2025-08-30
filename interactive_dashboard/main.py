@@ -113,7 +113,7 @@ app.index_string = '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Weather Dashboard</title>
+    <title>Interactive Dashboard</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
@@ -127,21 +127,23 @@ app.index_string = '''
             line-height: 1.5;
             overflow-x: hidden;
         }
-        .navbar-custom {
+        /* --- Start of new navbar CSS --- */
+        .common_navbar {
             width: 100%;
             overflow: hidden;
             background-color: black;
             color: white;
             padding: 8px 16px;
-            z-index: 4;
+            z-index: 1001; /* High z-index for Dash */
             position: fixed;
             top: 0;
             display: flex;
             justify-content: space-between;
             align-items: center;
             height: 44px;
+            font-family: 'Roboto', sans-serif;
         }
-        .navbar-custom a {
+        .common_navbar a {
             text-decoration: none;
             color: white !important;
             font-family: 'Roboto', sans-serif;
@@ -150,12 +152,83 @@ app.index_string = '''
             display: flex;
             align-items: center;
         }
-        .navbar-custom i {
-            margin-right: 5px;
-        }
         .common_navbar a:hover {
-            color: #ccc !important;
+                color: #ccc !important;
         }
+        .hamburger-button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 22px;
+            cursor: pointer;
+        }
+        .navbar-title {
+            font-size: 18px;
+            font-weight: 400; /* Regular font weight */
+        }
+        .navbar-title i {
+            margin-right: 8px;
+        }
+        .sidenav {
+            height: 100%;
+            width: 200px; /* Default width for mobile */
+            position: fixed;
+            z-index: 1002; /* High z-index for Dash */
+            top: 0;
+            left: 0;
+            background-color: #111;
+            overflow-x: hidden;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease-in-out;
+        }
+        @media screen and (min-width: 600px) {
+            .sidenav {
+                width: 280px;
+            }
+        }
+        .sidenav-open {
+            transform: translateX(0);
+        }
+        .sidenav-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            border-bottom: 1px solid #444;
+            min-height: 44px; /* Match navbar height */
+        }
+        .sidenav-title {
+            color: white;
+            font-size: 20px;
+            margin: 0;
+            font-weight: 500;
+        }
+        .close-btn {
+            background: none;
+            border: none;
+            color: #818181;
+            font-size: 22px;
+            cursor: pointer;
+        }
+        .close-btn:hover {
+            color: #f1f1f1;
+        }
+        .sidenav a {
+            padding: 10px 15px 10px 20px;
+            text-decoration: none;
+            font-size: 18px;
+            color: #818181;
+            display: block;
+            transition: 0.3s;
+            text-align: left; /* Ensure text is left-aligned */
+        }
+        .sidenav a:hover {
+            color: #f1f1f1;
+        }
+        .sidenav .fa-fw {
+            margin-right: 8px;
+        }
+        /* --- End of new navbar CSS --- */
         .center-table {
             margin-left: auto;
             margin-right: auto;
@@ -174,11 +247,28 @@ app.index_string = '''
     </style>
 </head>
 <body>
-    <div class="navbar-custom">
-        <a href="https://weather-dashboard-728445650450.europe-west2.run.app/"><i class="fa fa-dashboard"></i>Weather Summary</a>
-        <a href="https://display-weather-data-728445650450.europe-west2.run.app/"><i class="fa-solid fa-database"></i>View Data</a>
+    <!-- Sidenav/menu -->
+    <nav class="sidenav" id="mySidenav">
+      <div class="sidenav-header">
+        <h4 class="sidenav-title">Navigation</h4>
+        <button class="close-btn" id="close-sidenav-btn"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <a href="https://weather-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-dashboard fa-fw"></i>  Summary</a>
+      <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-magnifying-glass-chart fa-fw"></i>  Dashboard</a>
+      <a href="https://weather-chat-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-comments fa-fw"></i>  Chatbot</a>
+      <a href="https://display-weather-data-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-database fa-fw"></i>  Data</a>
+      <a href="https://europe-west1-weathercloud-460719.cloudfunctions.net/weather-image-classifier" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-camera-retro fa-fw"></i>  Image Classifier</a>
+    </nav>
+
+    <!-- Top container -->
+    <div class="common_navbar">
+      <button class="hamburger-button" id="hamburger-btn">
+        <i class="fa fa-bars"></i>
+      </button>
+      <span class="navbar-title"><i class="fa-solid fa-magnifying-glass-chart fa-fw"></i> Interactive Dashboard</span>
     </div>
-    <div id="react-entry-point" style="padding-top: 50px;">
+
+    <div id="react-entry-point" style="padding-top: 44px;">
         {%app_entry%}
     </div>
     <footer>
@@ -186,6 +276,28 @@ app.index_string = '''
         {%scripts%}
         {%renderer%}
     </footer>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const hamburgerBtn = document.getElementById('hamburger-btn');
+        const sidenav = document.getElementById('mySidenav');
+        const closeSidenavBtn = document.getElementById('close-sidenav-btn');
+
+        hamburgerBtn.addEventListener('click', function() {
+            sidenav.classList.add('sidenav-open');
+        });
+
+        closeSidenavBtn.addEventListener('click', function() {
+            sidenav.classList.remove('sidenav-open');
+        });
+
+        // Close the sidenav when clicking outside of it
+        document.addEventListener('click', function(event) {
+            if (!sidenav.contains(event.target) && !hamburgerBtn.contains(event.target)) {
+                sidenav.classList.remove('sidenav-open');
+            }
+        });
+    });
+    </script>
 </body>
 </html>
 '''
