@@ -43,26 +43,48 @@ html, body {
 <!-- <body class="w3-light-grey"> -->
 <body class="w3-white">
 
+<!-- Sidenav/menu -->
+<nav class="sidenav" id="mySidenav">
+  <a href="/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-summary fa-fw"></i>  Summary</a>
+  <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-magnifying-glass-chart fa-fw"></i>  Dashboard</a>
+  <a href="https://weather-chat-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-comments fa-fw"></i>  Chatbot</a>
+  <a href="#" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-database fa-fw"></i>  Data</a>
+  <a href="#" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-camera-retro fa-fw"></i>  Image Classifier</a>
+</nav>
+
 <!-- Top container -->
 <div class="common_navbar">
-  <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/"><i class="fa-solid fa-magnifying-glass-chart"></i>Interactive Dashboard</a>
-  <a href="https://weather-chat-728445650450.europe-west2.run.app/"><i class="fa-solid fa-comments"></i>Chatbot</a>
+  <button class="hamburger-button" id="hamburger-btn">
+    <i class="fa fa-bars"></i>
+  </button>
+  <span class="navbar-title">Meersy Weather Station</span>
 </div>
-
 
 <!-- !PAGE CONTENT! -->
 <div class="w3-main" style="margin-left:10px;margin-top:43px;">
-
-  <!-- Header 
-  <header class="w3-container" style="padding-top:22px">
-    <h5><b><i class="fa fa-dashboard"></i> Weather Dashboard</b></h5>
-  </header> 
--->
 
   {% block content %}{% endblock %}
  
   <!-- End page content -->
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const hamburgerBtn = document.getElementById('hamburger-btn');
+    const sidenav = document.getElementById('mySidenav');
+
+    hamburgerBtn.addEventListener('click', function() {
+        sidenav.classList.toggle('sidenav-open');
+    });
+
+    // Optional: Close the sidenav when clicking outside of it
+    document.addEventListener('click', function(event) {
+        if (!sidenav.contains(event.target) && !hamburgerBtn.contains(event.target)) {
+            sidenav.classList.remove('sidenav-open');
+        }
+    });
+});
+</script>
 
 
 
