@@ -423,46 +423,30 @@ def display_empty_bucket_page(headers):
                 background: #ffffff;
                 font-family: "Raleway", sans-serif;
             }}
+            .w3-main {{
+                padding-top: 44px;
+            }}
             main {{
                 max-width: 800px;
-                margin: 80px auto 40px;
+                margin: 40px auto 40px;
                 padding: 0 16px;
                 text-align: center;
             }}
-            .empty-state {{
-                padding: 40px;
-                background: #f8f9fa;
-                border-radius: 8px;
-                margin: 20px 0;
-            }}
-            .upload-section {{
-                margin-top: 40px;
-                padding: 24px;
-                border: 1px dashed #bbb;
-                border-radius: 8px;
-            }}
-            .upload-section input[type=file] {{
-                margin-bottom: 12px;
-            }}
-            .upload-section button {{
-                background:#007bff;
-                color:#fff;
-                border:none;
-                padding:10px 22px;
-                border-radius:5px;
-                cursor:pointer;
-            }}
+            .empty-state {{ padding: 40px; background: #f8f9fa; border-radius: 8px; margin: 20px 0; }}
+            .upload-section {{ margin-top: 40px; padding: 24px; border: 1px dashed #bbb; border-radius: 8px; }}
+            .upload-section input[type=file] {{ margin-bottom: 12px; }}
+            .upload-section button {{ background:#007bff; color:#fff; border:none; padding:10px 22px; border-radius:5px; cursor:pointer; }}
             .upload-section button:hover {{ background:#0069d9; }}
+            
+            /* --- Start of new navbar CSS --- */
             .common_navbar {{
                 width: 100%;
                 background-color: black;
                 color: white;
-                padding: 0 16px;
-                z-index: 4;
+                padding: 8px 16px;
+                z-index: 1001;
                 position: fixed;
                 top: 0;
-                left: 0;
-                right: 0;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
@@ -470,53 +454,109 @@ def display_empty_bucket_page(headers):
                 font-family: 'Roboto', sans-serif;
                 box-sizing: border-box;
             }}
-            .common_navbar a {{
-                text-decoration: none;
-                color: white !important;
-                font-family: 'Roboto', sans-serif;
-                font-size: 18px;
-                font-weight: 400;
+            .hamburger-button {{ background: none; border: none; color: white; font-size: 22px; cursor: pointer; }}
+            .navbar-title {{ font-size: 18px; font-weight: 400; }}
+            .navbar-title i {{ margin-right: 8px; }}
+            .sidenav {{
+                height: 100%;
+                width: 200px;
+                position: fixed;
+                z-index: 1002;
+                top: 0;
+                left: 0;
+                background-color: #111;
+                overflow-x: hidden;
+                transform: translateX(-100%);
+                transition: transform 0.3s ease-in-out;
+            }}
+            @media screen and (min-width: 600px) {{
+                .sidenav {{
+                    width: 280px;
+                }}
+            }}
+            .sidenav-open {{ transform: translateX(0); }}
+            .sidenav-header {{
                 display: flex;
+                justify-content: space-between;
                 align-items: center;
-                white-space: nowrap;
-                line-height: 1;
+                padding: 10px 20px;
+                border-bottom: 1px solid #444;
+                min-height: 44px;
             }}
-            .common_navbar a:hover {{ color: #ccc !important; }}
-            .common_navbar i {{
-                margin-right: 5px;
+            .sidenav-title {{ color: white; font-size: 20px; margin: 0; font-weight: 500; }}
+            .close-btn {{ background: none; border: none; color: #818181; font-size: 22px; cursor: pointer; }}
+            .close-btn:hover {{ color: #f1f1f1; }}
+            .sidenav a {{
+                padding: 10px 15px 10px 20px;
+                text-decoration: none;
                 font-size: 18px;
-                line-height: 1;
+                color: #818181;
+                display: block;
+                transition: 0.3s;
+                text-align: left;
             }}
+            .sidenav a:hover {{ color: #f1f1f1; }}
+            .sidenav .fa-fw {{ margin-right: 8px; }}
+            /* --- End of new navbar CSS --- */
         </style>
     </head>
     <body>
+        <!-- Sidenav/menu -->
+        <nav class="sidenav" id="mySidenav">
+          <div class="sidenav-header">
+            <h4 class="sidenav-title">Navigation</h4>
+            <button class="close-btn" id="close-sidenav-btn"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <a href="https://weather-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-dashboard fa-fw"></i>  Summary</a>
+          <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-magnifying-glass-chart fa-fw"></i>  Dashboard</a>
+          <a href="https://weather-chat-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-comments fa-fw"></i>  Chatbot</a>
+          <a href="https://display-weather-data-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-database fa-fw"></i>  Data</a>
+          <a href="https://europe-west1-weathercloud-460719.cloudfunctions.net/weather-image-classifier" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-camera-retro fa-fw"></i>  Image Classifier</a>
+        </nav>
+
+        <!-- Top container -->
         <div class="common_navbar">
-            <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/">
-                <i class="fa-solid fa-magnifying-glass-chart"></i>&nbsp;Interactive&nbsp;Dashboard
-            </a>
-            <a href="https://weather-chat-728445650450.europe-west2.run.app/">
-                <i class="fa-solid fa-comments"></i>&nbsp;Chatbot
-            </a>
+          <button class="hamburger-button" id="hamburger-btn">
+            <i class="fa fa-bars"></i>
+          </button>
+          <span class="navbar-title"><i class="fa-solid fa-camera-retro fa-fw"></i> Image Classifier</span>
         </div>
 
-        <main>
-            <h1 style="font-weight:600; font-size:32px;">Weather Image Classifier</h1>
-            
-            <div class="empty-state">
-                <i class="fa-solid fa-cloud" style="font-size: 48px; color: #6c757d; margin-bottom: 20px;"></i>
-                <h3>No weather images yet</h3>
-                <p>Upload your first weather photo to get started!</p>
-            </div>
+        <div class="w3-main">
+            <main>
+                <h1 style="font-weight:600; font-size:32px;">Weather Image Classifier</h1>
+                
+                <div class="empty-state">
+                    <i class="fa-solid fa-cloud" style="font-size: 48px; color: #6c757d; margin-bottom: 20px;"></i>
+                    <h3>No weather images yet</h3>
+                    <p>Upload your first weather photo to get started!</p>
+                </div>
 
-            <div class="upload-section">
-                <h3 style="margin-top:0;">Upload a weather photo</h3>
-                <form enctype="multipart/form-data" method="post">
-                    <input type="file" name="image" accept="image/*" required>
-                    <br>
-                    <button type="submit"><i class="fa fa-upload"></i>&nbsp;Upload&nbsp;&amp;&nbsp;Analyze</button>
-                </form>
-            </div>
-        </main>
+                <div class="upload-section">
+                    <h3 style="margin-top:0;">Upload a weather photo</h3>
+                    <form enctype="multipart/form-data" method="post">
+                        <input type="file" name="image" accept="image/*" required>
+                        <br>
+                        <button type="submit"><i class="fa fa-upload"></i>&nbsp;Upload&nbsp;&amp;&nbsp;Analyze</button>
+                    </form>
+                </div>
+            </main>
+        </div>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {{
+                const hamburgerBtn = document.getElementById('hamburger-btn');
+                const sidenav = document.getElementById('mySidenav');
+                const closeSidenavBtn = document.getElementById('close-sidenav-btn');
+                hamburgerBtn.addEventListener('click', function() {{ sidenav.classList.add('sidenav-open'); }});
+                closeSidenavBtn.addEventListener('click', function() {{ sidenav.classList.remove('sidenav-open'); }});
+                document.addEventListener('click', function(event) {{
+                    if (!sidenav.contains(event.target) && !hamburgerBtn.contains(event.target)) {{
+                        sidenav.classList.remove('sidenav-open');
+                    }}
+                }});
+            }});
+        </script>
     </body>
     </html>
     """
@@ -576,58 +616,32 @@ def generate_main_html(image_url, classification, timestamp, image_size, model_u
                 background: #ffffff;
                 font-family: "Raleway", sans-serif;
             }}
+            .w3-main {{
+                padding-top: 44px;
+            }}
             main {{
                 max-width: 800px;
-                margin: 80px auto 40px;
+                margin: 40px auto 40px;
                 padding: 0 16px;
                 text-align: center;
             }}
-            .weather-image {{
-                max-width: 100%;
-                height: auto;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-            }}
-            .classification-result {{
-                margin-top: 16px;
-                font-size: 20px;
-                font-weight: 500;
-                color: #333;
-                font-family: "Raleway", sans-serif;
-            }}
-            .timestamp {{
-                margin-top: 6px;
-                font-size: 13px;
-                color: #666;
-            }}
-            .upload-section {{
-                margin-top: 40px;
-                padding: 24px;
-                border: 1px dashed #bbb;
-                border-radius: 8px;
-            }}
-            .upload-section input[type=file] {{
-                margin-bottom: 12px;
-            }}
-            .upload-section button {{
-                background:#007bff;
-                color:#fff;
-                border:none;
-                padding:10px 22px;
-                border-radius:5px;
-                cursor:pointer;
-            }}
+            .weather-image {{ max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }}
+            .classification-result {{ margin-top: 16px; font-size: 20px; font-weight: 500; color: #333; }}
+            .timestamp {{ margin-top: 6px; font-size: 13px; color: #666; }}
+            .upload-section {{ margin-top: 40px; padding: 24px; border: 1px dashed #bbb; border-radius: 8px; }}
+            .upload-section input[type=file] {{ margin-bottom: 12px; }}
+            .upload-section button {{ background:#007bff; color:#fff; border:none; padding:10px 22px; border-radius:5px; cursor:pointer; }}
             .upload-section button:hover {{ background:#0069d9; }}
+            
+            /* --- Start of new navbar CSS --- */
             .common_navbar {{
                 width: 100%;
                 background-color: black;
                 color: white;
-                padding: 0 16px;
-                z-index: 4;
+                padding: 8px 16px;
+                z-index: 1001;
                 position: fixed;
                 top: 0;
-                left: 0;
-                right: 0;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
@@ -635,80 +649,127 @@ def generate_main_html(image_url, classification, timestamp, image_size, model_u
                 font-family: 'Roboto', sans-serif;
                 box-sizing: border-box;
             }}
-            .common_navbar a {{
-                text-decoration: none;
-                color: white !important;
-                font-family: 'Roboto', sans-serif;
-                font-size: 18px;
-                font-weight: 400;
+            .hamburger-button {{ background: none; border: none; color: white; font-size: 22px; cursor: pointer; }}
+            .navbar-title {{ font-size: 18px; font-weight: 400; }}
+            .navbar-title i {{ margin-right: 8px; }}
+            .sidenav {{
+                height: 100%;
+                width: 200px;
+                position: fixed;
+                z-index: 1002;
+                top: 0;
+                left: 0;
+                background-color: #111;
+                overflow-x: hidden;
+                transform: translateX(-100%);
+                transition: transform 0.3s ease-in-out;
+            }}
+            @media screen and (min-width: 600px) {{
+                .sidenav {{
+                    width: 280px;
+                }}
+            }}
+            .sidenav-open {{ transform: translateX(0); }}
+            .sidenav-header {{
                 display: flex;
+                justify-content: space-between;
                 align-items: center;
-                white-space: nowrap;
-                line-height: 1;
+                padding: 10px 20px;
+                border-bottom: 1px solid #444;
+                min-height: 44px;
             }}
-            .common_navbar a:hover {{ color: #ccc !important; }}
-            .common_navbar i {{
-                margin-right: 5px;
+            .sidenav-title {{ color: white; font-size: 20px; margin: 0; font-weight: 500; }}
+            .close-btn {{ background: none; border: none; color: #818181; font-size: 22px; cursor: pointer; }}
+            .close-btn:hover {{ color: #f1f1f1; }}
+            .sidenav a {{
+                padding: 10px 15px 10px 20px;
+                text-decoration: none;
                 font-size: 18px;
-                line-height: 1;
+                color: #818181;
+                display: block;
+                transition: 0.3s;
+                text-align: left;
             }}
+            .sidenav a:hover {{ color: #f1f1f1; }}
+            .sidenav .fa-fw {{ margin-right: 8px; }}
+            /* --- End of new navbar CSS --- */
         </style>
     </head>
     <body>
+        <!-- Sidenav/menu -->
+        <nav class="sidenav" id="mySidenav">
+          <div class="sidenav-header">
+            <h4 class="sidenav-title">Navigation</h4>
+            <button class="close-btn" id="close-sidenav-btn"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <a href="https://weather-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-dashboard fa-fw"></i>  Summary</a>
+          <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-magnifying-glass-chart fa-fw"></i>  Dashboard</a>
+          <a href="https://weather-chat-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-comments fa-fw"></i>  Chatbot</a>
+          <a href="https://display-weather-data-728445650450.europe-west2.run.app/" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-database fa-fw"></i>  Data</a>
+          <a href="https://europe-west1-weathercloud-460719.cloudfunctions.net/weather-image-classifier" class="w3-bar-item w3-button w3-padding"><i class="fa-solid fa-camera-retro fa-fw"></i>  Image Classifier</a>
+        </nav>
+
+        <!-- Top container -->
         <div class="common_navbar">
-            <a href="https://interactive-dashboard-728445650450.europe-west2.run.app/">
-                <i class="fa-solid fa-magnifying-glass-chart"></i>&nbsp;Interactive&nbsp;Dashboard
-            </a>
-            <a href="https://weather-chat-728445650450.europe-west2.run.app/">
-                <i class="fa-solid fa-comments"></i>&nbsp;Chatbot
-            </a>
+          <button class="hamburger-button" id="hamburger-btn">
+            <i class="fa fa-bars"></i>
+          </button>
+          <span class="navbar-title"><i class="fa-solid fa-camera-retro fa-fw"></i> Image Classifier</span>
         </div>
 
-        <main>
-            <h1 style="font-weight:600; font-size:32px;">Latest Weather Image</h1>
+        <div class="w3-main">
+            <main>
+                <h1 style="font-weight:600; font-size:32px;">Latest Weather Image</h1>
 
-            <img src="{image_url}" alt="Latest Weather Image" class="weather-image"
-                onerror="this.style.display='none';" />
+                <img src="{image_url}" alt="Latest Weather Image" class="weather-image"
+                    onerror="this.style.display='none';" />
 
-            <div class="classification-result">
-                Classification: {classification.replace('_',' ').title()}
-            </div>
+                <div class="classification-result">
+                    Classification: {classification.replace('_',' ').title()}
+                </div>
 
-            <div class="timestamp" id="timestamp-display">Last updated: Unknown</div>
+                <div class="timestamp" id="timestamp-display">Last updated: Unknown</div>
 
-            <div class="upload-section">
-                <h3 style="margin-top:0;">Upload a new photo</h3>
-                <form enctype="multipart/form-data" method="post">
-                    <input type="file" name="image" accept="image/*" required>
-                    <br>
-                    <button type="submit"><i class="fa fa-upload"></i>&nbsp;Upload&nbsp;&amp;&nbsp;Analyze</button>
-                </form>
-            </div>
-        </main>
+                <div class="upload-section">
+                    <h3 style="margin-top:0;">Upload a new photo</h3>
+                    <form enctype="multipart/form-data" method="post">
+                        <input type="file" name="image" accept="image/*" required>
+                        <br>
+                        <button type="submit"><i class="fa fa-upload"></i>&nbsp;Upload&nbsp;&amp;&nbsp;Analyze</button>
+                    </form>
+                </div>
+            </main>
+        </div>
 
         <script>
-            // Format timestamp on the client side
+            // Hamburger menu script
+            document.addEventListener('DOMContentLoaded', function() {{
+                const hamburgerBtn = document.getElementById('hamburger-btn');
+                const sidenav = document.getElementById('mySidenav');
+                const closeSidenavBtn = document.getElementById('close-sidenav-btn');
+                hamburgerBtn.addEventListener('click', function() {{ sidenav.classList.add('sidenav-open'); }});
+                closeSidenavBtn.addEventListener('click', function() {{ sidenav.classList.remove('sidenav-open'); }});
+                document.addEventListener('click', function(event) {{
+                    if (!sidenav.contains(event.target) && !hamburgerBtn.contains(event.target)) {{
+                        sidenav.classList.remove('sidenav-open');
+                    }}
+                }});
+            }});
+
+            // Original page script
             const timestamp = "{timestamp}";
             if (timestamp !== "Unknown") {{
                 try {{
                     const date = new Date(timestamp);
                     const formatted = date.toLocaleString('en-GB', {{
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour12: false
+                        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', hour12: false
                     }}).replace(',', ',');
-                    
                     document.getElementById('timestamp-display').textContent = `Last updated: ${{formatted}}`;
                 }} catch (e) {{
                     console.error('Error formatting timestamp:', e);
                     document.getElementById('timestamp-display').textContent = 'Last updated: Unknown';
                 }}
             }}
-            
-            // Force image refresh if it fails to load
             const img = document.querySelector('.weather-image');
             if (img) {{
                 img.onerror = function() {{
