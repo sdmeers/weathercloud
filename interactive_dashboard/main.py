@@ -217,7 +217,7 @@ app.index_string = '''
             padding: 10px 15px 10px 20px;
             text-decoration: none;
             font-size: 18px;
-            color: #818181;
+            color: white;
             display: block;
             transition: 0.3s;
             text-align: left; /* Ensure text is left-aligned */

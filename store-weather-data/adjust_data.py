@@ -8,8 +8,8 @@ from google.cloud import firestore
 
 # 1. Set the date and time range for the update.
 # Format: 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD'. The range is inclusive.
-START_DATE_STR = '2025-08-04 17:45'
-END_DATE_STR = '2025-08-05 08:00'
+START_DATE_STR = '2025-08-26 16:00'
+END_DATE_STR = '2025-08-26 20:15'
 
 # 2. List the parameters (fields) you want to adjust in the database.
 # Example: ['rain', 'rain_rate'] or ['temperature']
