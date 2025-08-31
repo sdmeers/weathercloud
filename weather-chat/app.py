@@ -309,7 +309,7 @@ st.markdown("""
         padding: 10px 15px 10px 20px;
         text-decoration: none;
         font-size: 18px;
-        color: #818181 !important;
+        color: white !important;
         display: block;
         transition: 0.3s;
         text-align: left;

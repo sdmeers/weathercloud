@@ -490,7 +490,7 @@ def display_empty_bucket_page(headers):
                 padding: 10px 15px 10px 20px;
                 text-decoration: none;
                 font-size: 18px;
-                color: #818181;
+                color: white;
                 display: block;
                 transition: 0.3s;
                 text-align: left;
@@ -685,7 +685,7 @@ def generate_main_html(image_url, classification, timestamp, image_size, model_u
                 padding: 10px 15px 10px 20px;
                 text-decoration: none;
                 font-size: 18px;
-                color: #818181;
+                color: white;
                 display: block;
                 transition: 0.3s;
                 text-align: left;
