@@ -6,3 +6,4 @@ weather-image-classifier/*.jpg
 store-weather-forecast/local
 *ipynb*
 *.png
+store-weather-data/weather_backfill.py
