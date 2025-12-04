@@ -39,7 +39,7 @@ def store_weather_data(request: Request):
         "timestamp": "YYYY-MM-DDTHH:MM:SSZ" // UTC timestamp from Pico
     }
     """
-    print(f"=== Received request at {datetime.now()} ===")
+    #print(f"=== Received request at {datetime.now()} ===")
 
     # Handle CORS preflight requests
     if request.method == 'OPTIONS':
@@ -139,6 +139,17 @@ def store_weather_data(request: Request):
         doc_ref.set(weather_data)
 
         print(f"Successfully stored weather data with ID: {doc_id}")
+    #     print(f"Successfully stored weather data\n"
+    #   f"  ID: {doc_id}\n"
+    #   f"  Temperature: {weather_data['temperature']}°C\n"
+    #   f"  Humidity: {weather_data['humidity']}%\n"
+    #   f"  Pressure: {weather_data['pressure']} hPa\n"
+    #   f"  Wind Speed: {weather_data['wind_speed']} m/s\n"
+    #   f"  Wind Direction: {weather_data['wind_direction']}°\n"
+    #   f"  Rain: {weather_data['rain']} mm\n"
+    #   f"  Rain Rate: {weather_data['rain_rate']} mm/s\n"
+    #   f"  Luminance: {weather_data['luminance']} lux\n"
+    #   f"  Timestamp: {weather_data['timestamp_UTC']}")
         logging.info(f"Successfully stored weather data with ID: {doc_id} and data: {weather_data}")
 
         return ({
