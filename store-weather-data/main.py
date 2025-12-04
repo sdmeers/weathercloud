@@ -128,6 +128,13 @@ def store_weather_data(request: Request):
                     logging.warning(f"Field '{field}' with value '{weather_data[field]}' is not a valid number.")
                     return ({'error': f'Field {field} must be a number. Received: {weather_data[field]}'}, 400, headers)
 
+        # Check for spurious wind speed readings (> 200 mph)
+        if 'wind_speed' in weather_data:
+            wind_speed_mph = weather_data['wind_speed'] * 2.23694
+            if wind_speed_mph > 200:
+                logging.warning(f"Spurious wind speed detected: {weather_data['wind_speed']} m/s ({wind_speed_mph:.2f} mph). Replacing with 0.")
+                weather_data['wind_speed'] = 0.0
+
         # 6. Remove the original 'timestamp' field from the document as it's now split
         # We assume the original 'timestamp' is only for parsing and not needed in the final doc
         if 'timestamp' in weather_data:
