@@ -10,6 +10,7 @@ from google.cloud.exceptions import GoogleCloudError
 # Initialize Firestore client globally to be reused across invocations
 # Ensure this matches the Database ID you created in Firestore.
 FIRESTORE_DATABASE_ID = "weatherdata"
+ALTITUDE_METERS = 120
 
 try:
     db = firestore.Client(database=FIRESTORE_DATABASE_ID)
@@ -127,6 +128,26 @@ def store_weather_data(request: Request):
                 except (ValueError, TypeError):
                     logging.warning(f"Field '{field}' with value '{weather_data[field]}' is not a valid number.")
                     return ({'error': f'Field {field} must be a number. Received: {weather_data[field]}'}, 400, headers)
+
+
+        # Adjust Pressure to Mean Sea Level (MSLP)
+        if 'pressure' in weather_data and 'temperature' in weather_data:
+            try:
+                p_abs = weather_data['pressure']
+                t_c = weather_data['temperature']
+                
+                # Calculate MSLP
+                # Formula: P_msl = P_abs * (1 - (0.0065 * h) / (T + 0.0065 * h + 273.15)) ^ -5.257
+                val_denom = t_c + (0.0065 * ALTITUDE_METERS) + 273.15
+                if val_denom != 0:
+                    term = 1 - ((0.0065 * ALTITUDE_METERS) / val_denom)
+                    mslp = p_abs * (term ** -5.257)
+                    
+                    weather_data['absolute_pressure'] = p_abs
+                    weather_data['pressure'] = round(mslp, 2)
+                    logging.info(f"Adjusted pressure: {p_abs} -> {weather_data['pressure']} (Alt: {ALTITUDE_METERS}m, Temp: {t_c}C)")
+            except Exception as e:
+                logging.warning(f"Could not adjust pressure to MSL: {e}")
 
         # Check for spurious wind speed readings (> 200 mph)
         if 'wind_speed' in weather_data:
