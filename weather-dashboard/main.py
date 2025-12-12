@@ -401,7 +401,7 @@ def plot_pressure_png():
     d = get_weather_data_from_cloud_function("last7days", fields=['pressure'])
     if d.empty: return Response(status=204)
     fig = plot_data(d['datetime'], d['pressure'],
-                    'Pressure', 'Mean Sea Level Pressure (hPa)')
+                    'Pressure', 'Pressure (Mean Sea Level, hPa)')
     buf = io.BytesIO(); FigureCanvas(fig).print_png(buf)
     return Response(buf.getvalue(), mimetype='image/png')
 
