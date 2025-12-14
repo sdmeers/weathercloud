@@ -118,12 +118,16 @@ def store_weather_data(request: Request):
             logging.warning("Client 'timestamp' field is missing or LONDON_TZ is not defined.")
             return ({'error': 'Timestamp is required'}, 400, headers)
 
+
         # 5. Validate and convert numeric fields
         numeric_fields = ['temperature', 'humidity', 'pressure', 'rain',
-                          'rain_rate', 'luminance', 'wind_speed', 'wind_direction']
+                          'rain_rate', 'luminance', 'wind_speed', 'wind_direction', 'signal_strength']
         for field in numeric_fields:
             if field in weather_data:
                 try:
+                    # Allow signal_strength to be None
+                    if field == 'signal_strength' and weather_data[field] is None:
+                        continue
                     weather_data[field] = float(weather_data[field])
                 except (ValueError, TypeError):
                     logging.warning(f"Field '{field}' with value '{weather_data[field]}' is not a valid number.")
