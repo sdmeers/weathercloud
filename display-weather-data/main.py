@@ -145,6 +145,9 @@ def display_weather_data(request):
         wind_direction_deg = data.get('wind_direction')
         wind_direction = convert_wind_direction(wind_direction_deg)
 
+        # 5) Retrieve signal strength (RSSI)
+        signal_strength = data.get('signal_strength', 'N/A')
+
 
         weather_data_rows.append(f"""
             <tr>
@@ -157,6 +160,7 @@ def display_weather_data(request):
                 <td>{luminance}</td>
                 <td>{wind_speed}</td>
                 <td>{wind_direction}</td>
+                <td>{signal_strength}</td>
             </tr>
         """)
 
@@ -319,6 +323,7 @@ def display_weather_data(request):
                                     <th>Luminance (lux)</th>
                                     <th>Wind Speed (mph)</th>
                                     <th>Wind Direction</th>
+                                    <th>Signal Strength (dBm)</th>
                                 </tr>
                             </thead>
                             <tbody>
