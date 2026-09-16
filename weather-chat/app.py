@@ -17,7 +17,12 @@ from vertexai.preview.generative_models import (
 
 # ── Vertex AI init ────────────────────────────────────────────────────
 vertexai.init(project="weathercloud-460719", location="us-central1")
-MODEL_ID = "gemini-2.0-flash-lite-001"
+# gemini-2.0-flash-lite-001 was retired by Google; calls returned
+# 404 "Publisher model ... was not found". gemini-2.5-flash-lite is its
+# low-cost successor and is available in us-central1 (verified 12 Sept 2026).
+# Note it is NOT available in europe-west2, so do not "tidy up" the region
+# above to match the rest of WeatherCloud without re-checking the model.
+MODEL_ID = "gemini-2.5-flash-lite"
 
 # ── System prompt ─────────────────────────────────────────────────────
 def get_system_prompt():

@@ -11,7 +11,8 @@ import hashlib
 import uuid
 import time
 
-# Initialize Vertex AI - USE EUROPE-WEST2 (London) for gemini-2.0-flash-lite
+# Initialize Vertex AI. Runs in europe-west1: gemini-2.5-flash-lite is
+# available there and in us-central1, but NOT in europe-west2.
 PROJECT_ID = os.environ.get('PROJECT_ID')
 LOCATION = os.environ.get('LOCATION', 'europe-west1')
 BUCKET_NAME = os.environ.get('BUCKET_NAME')
@@ -112,8 +113,10 @@ def classify_weather_image(image_data, image_hash):
         # Create Vertex AI image object directly from bytes
         vertex_image = VertexImage.from_bytes(image_data)
         
-        # Use gemini-2.0-flash-lite - available in europe-west2, cost-effective for image classification
-        model_name = "gemini-2.0-flash-lite-001"
+        # gemini-2.0-flash-lite-001 was retired by Google; calls returned
+        # 404 "Publisher model ... was not found". gemini-2.5-flash-lite is its
+        # low-cost successor, available in this function's europe-west1.
+        model_name = "gemini-2.5-flash-lite"
         
         try:
             print(f"Initializing model: {model_name}")
@@ -121,7 +124,8 @@ def classify_weather_image(image_data, image_hash):
             print(f"Successfully initialized model: {model_name}")
         except Exception as model_error:
             print(f"Failed to initialize {model_name}: {str(model_error)}")
-            print("Make sure you're using LOCATION='europe-west2' where gemini-2.0-flash-lite is available")
+            print(f"{model_name} is not available in LOCATION={LOCATION}. "
+                  "Check the region before changing the model.")
             return 'error'
         
         # Deterministic prompt with explicit constraints
