@@ -899,6 +899,16 @@ def update_statistics_table(data):
 server = app.server
 application = app.server
 
+# Keep crawlers out: every page load and callback queries get-weather-data, which
+# bills Firestore reads. A specific route outranks Dash's /<path:path> catch-all.
+ROBOTS_TXT = "User-agent: *\nDisallow: /\n"
+
+
+@server.route("/robots.txt")
+def robots_txt():
+    return server.response_class(ROBOTS_TXT, mimetype="text/plain")
+
+
 if __name__ == '__main__':
     import os
     port = int(os.environ.get('PORT', 8081))
