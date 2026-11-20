@@ -13,6 +13,7 @@ matplotlib.use('Agg')
 from matplotlib.ticker import MultipleLocator
 from matplotlib.dates import DayLocator, DateFormatter
 
+import flask
 from flask import Flask, Response, render_template
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -488,6 +489,28 @@ def plot_annual_rain_days_png():
     else:
         logging.warning("No 'rain' column available for annual rain days plot.")
         return Response(status=204) # No content if data is missing
+
+
+# Every page load here costs 15 calls to get-weather-data, so keep crawlers out.
+ROBOTS_TXT = "User-agent: *\nDisallow: /\n"
+
+
+def _serve_robots_txt():
+    """Answer /robots.txt ourselves.
+
+    functions-framework routes /robots.txt to a hard-coded 404 before the user
+    function (and so the inner Flask app) is called. A before_request hook on
+    functions-framework's own app runs ahead of that routing decision.
+    """
+    if flask.request.path == "/robots.txt":
+        return Response(ROBOTS_TXT, mimetype="text/plain")
+    return None
+
+
+# functions-framework imports this module inside its Flask app context, which is
+# the only point at which a hook can be registered on its app.
+if flask.has_app_context():
+    flask.current_app.before_request(_serve_robots_txt)
 
 
 @functions_framework.http

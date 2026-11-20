@@ -1,0 +1,8 @@
+# Keep local dev artefacts out of the deploy upload.
+.gcloudignore
+.git
+.gitignore
+.venv/
+__pycache__/
+.pytest_cache/
+test_*.py
