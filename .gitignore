@@ -10,3 +10,34 @@ store-weather-data/weather_backfill.py
 .venv/
 __pycache__/
 .pytest_cache/
+
+# --- Private: never publish (repo is public) ---
+# Personal operating notes / plans: contain live-weakness details, billing figures,
+# other project IDs and the owner's email.
+CLAUDE.md
+CLAUDE.local.md
+COST_REVIEW_NOTES.md
+weatherstation_refactor_plan.md
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*credentials*.json
+*service-account*.json
+*-sa-key*.json
+# Local data: Firestore snapshots, exports, backups, git bundles
+data/
+*.jsonl
+*.jsonl.zst
+*.bundle
+# Photos can carry EXIF GPS (see the 2025 leak): only commit stripped images
+*.jpg
+*.jpeg
+*.heic
+# Tooling output
+.ruff_cache/
+node_modules/
+dist/
+coverage/
+.firebase/
+firebase-debug.log
