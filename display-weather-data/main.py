@@ -1,8 +1,117 @@
-import functions_framework
-from google.cloud import firestore
 import datetime
-import pytz
+import html
 import os
+from urllib.parse import urlencode
+
+import flask
+import functions_framework
+import pytz
+from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
+
+RECORDS_PER_PAGE = 96
+
+# Crawlers must not page through this table: every page is a billed Firestore
+# query. In Nov 2026 Meta's crawler walked ?page=1..1203 under the old offset()
+# pagination at ~56k reads per page (44M reads in one day).
+ROBOTS_TXT = "User-agent: *\nDisallow: /\n"
+NO_INDEX_HEADERS = {"X-Robots-Tag": "noindex, nofollow"}
+
+
+def _serve_robots_txt():
+    """Answer /robots.txt ourselves.
+
+    functions-framework routes /robots.txt to a hard-coded 404 before the user
+    function is called, so it cannot be handled inside display_weather_data().
+    A before_request hook runs ahead of that routing decision.
+    """
+    if flask.request.path == "/robots.txt":
+        return flask.Response(ROBOTS_TXT, mimetype="text/plain")
+    return None
+
+
+# functions-framework imports this module inside the Flask app context, which is
+# the only point at which a hook can be registered on its app.
+if flask.has_app_context():
+    flask.current_app.before_request(_serve_robots_txt)
+
+
+class InvalidCursor(ValueError):
+    """A before=/after= value that is not an ISO-8601 timestamp."""
+
+
+def parse_cursor(value):
+    """Parse an ISO-8601 cursor into a UTC-aware datetime. Raises InvalidCursor."""
+    try:
+        dt = datetime.datetime.fromisoformat(value)
+    except ValueError as e:
+        raise InvalidCursor(value) from e
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.UTC)
+    return dt
+
+
+def format_cursor(timestamp):
+    return timestamp.astimezone(datetime.UTC).isoformat()
+
+
+def fetch_page(collection_ref, args):
+    """Fetch one page of readings, newest first, using cursor pagination.
+
+    Every branch reads at most RECORDS_PER_PAGE + 1 documents whatever page the
+    caller is on; there is no offset() and no count().
+
+      (no args)       newest page
+      before=<ts>     the page of readings older than <ts>
+      after=<ts>      the page of readings newer than <ts>
+      oldest=1        the oldest page
+
+    Returns (docs, has_newer, has_older), docs ordered newest first.
+    """
+    field = "timestamp_UTC"
+    desc = firestore.Query.DESCENDING
+    asc = firestore.Query.ASCENDING
+    limit = RECORDS_PER_PAGE + 1  # one extra to learn whether another page exists
+
+    if "before" in args:
+        cursor = parse_cursor(args["before"])
+        query = collection_ref.where(filter=FieldFilter(field, "<", cursor)).order_by(field, direction=desc)
+        docs = list(query.limit(limit).stream())
+        return docs[:RECORDS_PER_PAGE], True, len(docs) > RECORDS_PER_PAGE
+
+    if "after" in args:
+        cursor = parse_cursor(args["after"])
+        query = collection_ref.where(filter=FieldFilter(field, ">", cursor)).order_by(field, direction=asc)
+        docs = list(query.limit(limit).stream())
+        return list(reversed(docs[:RECORDS_PER_PAGE])), len(docs) > RECORDS_PER_PAGE, True
+
+    if "oldest" in args:
+        docs = list(collection_ref.order_by(field, direction=asc).limit(limit).stream())
+        return list(reversed(docs[:RECORDS_PER_PAGE])), len(docs) > RECORDS_PER_PAGE, False
+
+    docs = list(collection_ref.order_by(field, direction=desc).limit(limit).stream())
+    return docs[:RECORDS_PER_PAGE], False, len(docs) > RECORDS_PER_PAGE
+
+
+def build_pagination_links(docs, has_newer, has_older):
+    """Return the First/Previous/Next/Last buttons. Links are query-only relative
+    URLs so they work on both the run.app and cloudfunctions.net hosts."""
+
+    def button(query, label, extra_class="w3-margin-right"):
+        href = html.escape("?" + urlencode(query), quote=True)
+        return f'<a href="{href}" rel="nofollow" class="w3-button w3-dark-grey {extra_class}">{label}</a>'
+
+    if not docs:  # cursor past either end of the data
+        return button({}, "First Page")
+
+    links = ""
+    if has_newer:
+        links += button({}, "First Page")
+        links += button({"after": format_cursor(docs[0].get("timestamp_UTC"))}, "Previous Page")
+    if has_older:
+        links += button({"before": format_cursor(docs[-1].get("timestamp_UTC"))}, "Next Page")
+        links += button({"oldest": "1"}, "Last Page", extra_class="")
+    return links
 
 def convert_wind_direction(deg):
     """
@@ -48,57 +157,32 @@ def display_weather_data(request):
     """
     Cloud Function to display raw weather readings from Firestore in a paginated table.
     """
+    # The old ?page=N scheme is retired. Crawlers still hold ~1,200 such URLs, so
+    # answer them without touching Firestore and mark them permanently gone.
+    if "page" in request.args:
+        return (
+            '<p>This page no longer exists. <a href="?">View the latest readings</a>.</p>',
+            410,
+            {"Content-Type": "text/html", **NO_INDEX_HEADERS},
+        )
+
     # Specify the Firestore database ID
     FIRESTORE_DATABASE_ID = "weatherdata"
     db = firestore.Client(database=FIRESTORE_DATABASE_ID)
-    
+
     collection_ref = db.collection('weather-readings')
 
-    # Get page number from request, default to 1
-    page = int(request.args.get('page', 1))
-    records_per_page = 96
-
-    # Calculate offset for pagination
-    # Note: Firestore's offset is costly for large datasets.
-    # For robust pagination, consider using 'start_after' with the last document's timestamp.
-    offset = (page - 1) * records_per_page
-
-    # Query Firestore: order by timestamp_UTC descending
-    base_query = collection_ref.order_by('timestamp_UTC', direction=firestore.Query.DESCENDING)
-
-    # Get total document count for "Last Page" button.
-    # This uses Firestore's aggregation queries.
-    total_documents = 0
     try:
-        agg_query = base_query.count()
-        results = agg_query.get()
-        if results:
-            total_documents = results[0][0].value # Access the count value
-    except Exception as e:
-        print(f"Error getting total document count: {e}")
-        # If count fails, last page button might not work or be accurate
-        # Fallback to a value that allows some pagination, but might not be exact.
-        # This prevents division by zero if total_documents remains 0 or calculation fails.
-        total_documents = max(records_per_page * page, 1) # At least one page
-
-
-    total_pages = (total_documents + records_per_page - 1) // records_per_page # Ceiling division
-
-    # Apply offset and limit for pagination
-    # Adding +1 to limit to check if there's a next page efficiently
-    docs_stream = base_query.offset(offset).limit(records_per_page + 1).stream()
-    docs = list(docs_stream)
-
-    # Calculate has_next_page BEFORE generating pagination links
-    has_next_page = len(docs) > records_per_page
+        docs, has_newer, has_older = fetch_page(collection_ref, request.args)
+    except InvalidCursor:
+        return "Invalid page cursor.", 400, {"Content-Type": "text/plain", **NO_INDEX_HEADERS}
 
     weather_data_rows = []
     # Define a timezone for conversion (e.g., Europe/London)
     # It's good practice to make this configurable via environment variables if deployed broadly.
     local_tz = pytz.timezone('Europe/London')
 
-    # Iterate through documents for the current page only (up to records_per_page)
-    for doc in docs[:records_per_page]:
+    for doc in docs:
         data = doc.to_dict()
         
         # Get timestamp_UTC. It should be a Firestore Timestamp object (which behaves like datetime).
@@ -164,23 +248,7 @@ def display_weather_data(request):
             </tr>
         """)
 
-    # Generate pagination links
-    pagination_links = ""
-    # "First Page" button
-    if page > 1:
-        pagination_links += f'<a href="?page=1" class="w3-button w3-dark-grey w3-margin-right">First Page</a>'
-    
-    # "Previous Page" button
-    if page > 1:
-        pagination_links += f'<a href="?page={page - 1}" class="w3-button w3-dark-grey w3-margin-right">Previous Page</a>'
-    
-    # "Next Page" button
-    if has_next_page: # Now correctly defined
-        pagination_links += f'<a href="?page={page + 1}" class="w3-button w3-dark-grey w3-margin-right">Next Page</a>'
-    
-    # "Last Page" button
-    if page < total_pages:
-        pagination_links += f'<a href="?page={total_pages}" class="w3-button w3-dark-grey">Last Page</a>'
+    pagination_links = build_pagination_links(docs, has_newer, has_older)
 
 
     # Get URLs from environment variables, with fallbacks
@@ -194,6 +262,7 @@ def display_weather_data(request):
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Weather Data Log</title>
+            <meta name="robots" content="noindex, nofollow">
             <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
             <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -363,4 +432,4 @@ def display_weather_data(request):
         </html>
         """
 
-    return html_content, 200, {'Content-Type': 'text/html'}
+    return html_content, 200, {'Content-Type': 'text/html', **NO_INDEX_HEADERS}
