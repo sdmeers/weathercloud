@@ -1,0 +1,9 @@
+# Keep local dev artefacts out of the Cloud Functions source upload.
+.gcloudignore
+.git
+.gitignore
+.venv/
+__pycache__/
+.pytest_cache/
+test_*.py
+requirements-dev.txt

@@ -7,3 +7,6 @@ store-weather-forecast/local
 *ipynb*
 *.png
 store-weather-data/weather_backfill.py
+.venv/
+__pycache__/
+.pytest_cache/
